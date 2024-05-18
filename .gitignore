@@ -1,0 +1,10 @@
+*.c.un~
+*.cpp.un~
+*.h.un~
+*.h~
+*.c~
+*.o
+lib/Beat-and-Tempo-Tracking/*.o
+lib/Beat-and-Tempo-Tracking/src/*.o
+.vscode/
+Makefile~
