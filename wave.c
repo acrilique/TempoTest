@@ -3,7 +3,7 @@
  *
  * @author Lluc Simó Margalef
  **/
-//#include <unistd.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -202,7 +202,7 @@ float** wave_read(struct WAVE *wav, unsigned int num_samples) {
 		printf("Error in size of sample\n");
 	}
 	if (i<num_samples) {
-		printf("Error: %d samples requested, %ld samples read (A difference of %ld).\n", num_samples, i, num_samples - i);
+		printf("End of file: %d samples requested, %ld samples read (A difference of %ld).\n", num_samples, i, num_samples - i);
 	}
 
 	return samples;
