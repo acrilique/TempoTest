@@ -9,6 +9,14 @@
 #include <stdlib.h>
 #include "wave.h"
 
+unsigned int le2int16bit(unsigned char *bytes) {
+	return bytes[0] | (bytes[1] << 8);
+}
+
+unsigned int le2int32bit(unsigned char *bytes) {
+	return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+}
+
 /**
  * Open wave file, read header and
  * open file pointer.
@@ -20,81 +28,53 @@ void wave_open(struct WAVE *wav, const char *file_path){
 	unsigned char buffer4[4];
 	unsigned char buffer2[2];
 
-	// allocate memory for wave header
-	wav->header = (struct HEADER*) malloc(sizeof(struct HEADER));
+	wav->header = (struct HEADER*) malloc(sizeof(struct HEADER)); /* Allocation to save header data. */
 	if (wav->header == NULL) {
 		printf("Error in malloc\n");
-		exit(1);
+		return 1;
 	}
-	// open file
-	wav->ptr = fopen(file_path, "rb");
+
+	wav->ptr = fopen(file_path, "rb"); /* Open file in binary mode */
 	if (wav->ptr == NULL) {
 		printf("Error opening file\n");
-		exit(1);
+		return 1;
 	}
 	
-	size_t read = fread(wav->header->riff, sizeof(wav->header->riff), 1, wav->ptr);
 
-	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
+	size_t read = fread(wav->header->riff, sizeof(wav->header->riff), 1, wav->ptr); /* Read "RIFF" */
 
-	// convert little endian to big endian 4 byte int
-	wav->header->overall_size = buffer4[0] |
-	(buffer4[1]<<8) |
-	(buffer4[2]<<16) |
-	(buffer4[3]<<24);
+	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* ChunkSize represents the size of the entire file minus 8 bytes. */
+	wav->header->overall_size = le2int32bit(buffer4); /* Those 8 bytes are th size of the RIFF header + this field. */
 
-	read = fread(wav->header->wave, sizeof(wav->header->wave), 1, wav->ptr);
+	read = fread(wav->header->wave, sizeof(wav->header->wave), 1, wav->ptr); /* Read "WAVE" */
 
-	read = fread(wav->header->fmt_chunk_marker, sizeof(wav->header->fmt_chunk_marker), 1, wav->ptr);
+	read = fread(wav->header->fmt_chunk_marker, sizeof(wav->header->fmt_chunk_marker), 1, wav->ptr); /* Read "fmt " */
 
-	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
+	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* Length of format chunk */
+	wav->header->length_of_fmt = le2int32bit(buffer4); /* 16: PCM, 18: Non-PCM, 40: Extensible */
 
-	// convert little endian to big endian 4 byte integer
-	wav->header->length_of_fmt = buffer4[0] |
-	(buffer4[1] << 8) |
-	(buffer4[2] << 16) |
-	(buffer4[3] << 24);
+	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Format type. 0x0001: PCM, 0x0003: IEEE float */
+	wav->header->format_type = le2int16bit(buffer2); /* 0x0006: A-law, 0x0007: mu-law, 0xFFFE: Extensible */
 
 	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
-
-	wav->header->format_type = buffer2[0] | (buffer2[1] << 8);
-
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
-
-	wav->header->channels = buffer2[0] | (buffer2[1] << 8);
+	wav->header->channels = le2int16bit(buffer2);
 
 	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
-
-	wav->header->sample_rate = buffer4[0] |
-	(buffer4[1] << 8) |
-	(buffer4[2] << 16) |
-	(buffer4[3] << 24);
+	wav->header->sample_rate = le2int32bit(buffer4);
 
 	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
-
-	wav->header->byterate = buffer4[0] |
-	(buffer4[1] << 8) |
-	(buffer4[2] << 16) |
-	(buffer4[3] << 24);
+	wav->header->byterate = le2int32bit(buffer4);
 
 	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
-
-	wav->header->block_align = buffer2[0] |
-	(buffer2[1] << 8);
+	wav->header->block_align = le2int16bit(buffer2);
 
 	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
-
-	wav->header->bits_per_sample = buffer2[0] |
-	(buffer2[1] << 8);
+	wav->header->bits_per_sample = le2int16bit(buffer2);
 
 	read = fread(wav->header->data_chunk_header, sizeof(wav->header->data_chunk_header), 1, wav->ptr);
 
 	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
-
-	wav->header->data_size = buffer4[0] |
-	(buffer4[1] << 8) |
-	(buffer4[2] << 16) |
-	(buffer4[3] << 24 );
+	wav->header->data_size = le2int32bit(buffer4);
 
 	wav->num_samples = (8 * (wav->header->data_size - 8)) / (wav->header->channels * wav->header->bits_per_sample) - 8;
 
