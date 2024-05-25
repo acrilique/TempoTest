@@ -11,7 +11,7 @@
 #include "raylib.h"
 
 #define RAYGUI_IMPLEMENTATION
-#include "../../lib/raylib/examples/shapes/raygui.h"
+#include "lib/raylib/examples/shapes/raygui.h"
 
 #undef RAYGUI_IMPLEMENTATION
 #define GUI_WINDOW_FILE_DIALOG_IMPLEMENTATION
@@ -25,6 +25,7 @@ WAVE wav;
 CircularBuffer *cb;
 float last_tempo = 0;
 int stop_reading_flag = 0;
+int audio_thead_open = 1; // 1 if closed, 0 if open
 
 void audio_thread(BTT *btt);
 
@@ -72,7 +73,7 @@ int main()
                 strncat(fileNameToLoad, (const char*) fileDialogState.fileNameText, 512 - strlen(fileNameToLoad));
                 wave_open(&wav, (const char*) fileNameToLoad);
                 
-                pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
+                audio_thead_open = pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
                 
             }
 
@@ -123,7 +124,8 @@ int main()
     }
 
     stop_reading_flag = 1;
-    pthread_join(tempo_thread, NULL);
+    if (!audio_thead_open)
+        pthread_join(tempo_thread, NULL); 
     if (wav.is_open) {
         wave_close(&wav);
     }
@@ -172,4 +174,5 @@ void audio_thread(BTT *btt) {
         free(samples[i]);
     }
     stop_reading_flag = 0;
+    audio_thead_open = 1;
 }

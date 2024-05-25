@@ -1,3 +1,4 @@
+*.un~
 *.c.un~
 *.cpp.un~
 *.h.un~
