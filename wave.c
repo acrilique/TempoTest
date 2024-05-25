@@ -9,6 +9,12 @@
 #include <stdlib.h>
 #include "wave.h"
 
+struct _WAVE_READ_RETURN_DESC WAVE_READ_RETURN_DESC[] = {
+		{ WAVE_READ_SUCCESS, "We managed to read all the samples requested, without errors. (Could be END OF FILE)." },
+		{ WAVE_READ_EOF, "Unexpected END OF FILE. We read less samples than requested." },
+		{ WAVE_READ_ERROR, "Memory allocation error or error in the header of the .wav file." }
+};
+
 unsigned int le2int16bit(unsigned char *bytes) {
 	return bytes[0] | (bytes[1] << 8);
 }
@@ -18,12 +24,22 @@ unsigned int le2int32bit(unsigned char *bytes) {
 }
 
 /**
- * Open wave file, read header and
- * open file pointer.
+ * Init WAVE object
+ * @param struct WAVE wav* - pointer to wave object
+ **/
+int wave_init(struct WAVE *wav){
+	wav->is_open = 0;
+	return 0;
+}
+
+/**
+ * Open wave file pointer and read its header
+ * until the beggining of the data section
+ * (ready to read samples).
  * @param struct WAVE wav* - pointer to wave object
  * @param char *file_path - path to wave file
  **/
-void wave_open(struct WAVE *wav, const char *file_path){
+int wave_open(struct WAVE *wav, const char *file_path){
 
 	unsigned char buffer4[4];
 	unsigned char buffer2[2];
@@ -36,7 +52,7 @@ void wave_open(struct WAVE *wav, const char *file_path){
 
 	wav->ptr = fopen(file_path, "rb"); /* Open file in binary mode */
 	if (wav->ptr == NULL) {
-		printf("Error opening file\n");
+		printf("Error opening file: %s\n", file_path);
 		return 1;
 	}
 	
@@ -56,17 +72,27 @@ void wave_open(struct WAVE *wav, const char *file_path){
 	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Format type. 0x0001: PCM, 0x0003: IEEE float */
 	wav->header->format_type = le2int16bit(buffer2); /* 0x0006: A-law, 0x0007: mu-law, 0xFFFE: Extensible */
 
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
+	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Number of channels */
 	wav->header->channels = le2int16bit(buffer2);
 
-	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
+	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* Sample rate */
 	wav->header->sample_rate = le2int32bit(buffer4);
 
-	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr);
-	wav->header->byterate = le2int32bit(buffer4);
+	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* Average bytes per second */
+	wav->header->byterate = le2int32bit(buffer4); /* Samplerate x bytes per sample x Num. channels */
 
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
-	wav->header->block_align = le2int16bit(buffer2);
+	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Block align */
+	wav->header->block_align = le2int16bit(buffer2); /* Bytes per sample x Num. channels */
+
+	/* Now we will check if this file is PCM or not, and parse the extra fields if necessary. */
+	if (wav->header->length_of_fmt > 16) {
+		read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); 
+	
+		if (wav->header->length_of_fmt > 18) { /* Assume it has length 40. */
+			
+		}
+	} 
+
 
 	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
 	wav->header->bits_per_sample = le2int16bit(buffer2);
@@ -78,6 +104,9 @@ void wave_open(struct WAVE *wav, const char *file_path){
 
 	wav->num_samples = (8 * (wav->header->data_size - 8)) / (wav->header->channels * wav->header->bits_per_sample) - 8;
 
+	wav->is_open = 1;
+
+	return 0;
 }
 
 /**
@@ -91,18 +120,19 @@ void wave_close(struct WAVE *wav) {
 
 /**
  * Read certain amount of samples from wave file
- * and return an array of samples
- * @param struct WAVE wav - wave object
- * @param num_samples - number of samples to read
- * @return samples - two dimensional array of float samples between -1 and 1
+ * and return an array of samples. Samples should be
+ * pre-allocated like this:
+ * float *samples[num_samples];
+ * for (int i = 0; i < num_samples; i++) {
+ * 	samples[i] = (float *) malloc(sizeof(float) * num_channels);
+ * }
+ * @param wav WAVE *wav - pointer to wave object
+ * @param num_samples unsigned int - number of samples to read
+ * @param samples float ** - two dimensional array of float samples (allocated!)
+ * @return int - indicates how the read ended. For the return codes, check WAVE_READ_RETURN_DESC
  **/
-float** wave_read(struct WAVE *wav, unsigned int num_samples) {
-	float **samples;
-	samples = (float**) malloc(sizeof(float*) * num_samples);
-	if (samples == NULL) {
-		printf("Error in malloc\n");
-		exit(1);
-	}
+int wave_read(struct WAVE *wav, unsigned int num_samples, float **samples) {
+
 	long size_of_each_sample = (wav->header->channels * wav->header->bits_per_sample) / 8;
 	long i =0;
 	char data_buffer[size_of_each_sample];
@@ -134,17 +164,13 @@ float** wave_read(struct WAVE *wav, unsigned int num_samples) {
 				break;
 		}					
 
-		for (i =1; i <= num_samples; i++) {
-			samples[i-1] = (float*) malloc(sizeof(float) * wav->header->channels);
-			if (samples[i-1] == NULL) {
-					printf("Error in malloc\n");
-					exit(1);
-			}
+		for (i = 0; i < num_samples; i++) {
+
 			size_t read = fread(data_buffer, sizeof(data_buffer), 1, wav->ptr);
 			if (read == 1) {
 			
 				// dump the data read
-				unsigned int  xchannels = 0;
+				unsigned int xchannels = 0;
 				int data_in_channel = 0;
 				int offset = 0; // move the offset for every iteration in the loop below
 				for (xchannels = 0; xchannels < wav->header->channels; xchannels ++ ) {
@@ -165,26 +191,26 @@ float** wave_read(struct WAVE *wav, unsigned int num_samples) {
 
 					offset += bytes_in_each_channel;		
 					float sample = (float) data_in_channel / high_limit;
-					samples[i-1][xchannels] = sample;
+					samples[i][xchannels] = sample;
 
-					// check if value was in range
-					if (data_in_channel < low_limit || data_in_channel > high_limit)
-						printf("**value out of range\n");
+					// ensure value is in range
+					if (data_in_channel < low_limit) data_in_channel = low_limit;
+					else if (data_in_channel > high_limit) data_in_channel = high_limit;
 				}
 			}
 			else {
-				// printf("Error reading file. %d bytes. %d samples read.\n", read, i);
+				//printf("Error reading file. %u samples requested. %d samples read.\n", num_samples, i);
 				break;
 			}
 
 		} 
 	} else {
-		printf("Error in size of sample\n");
+		// printf("Error in size of sample\n");
+		return WAVE_READ_ERROR;
 	}
 	if (i<num_samples) {
-		printf("End of file: %d samples requested, %ld samples read (A difference of %ld).\n", num_samples, i, num_samples - i);
+		return WAVE_READ_EOF;
 	}
-
-	return samples;
+	return WAVE_READ_SUCCESS;
 }
 

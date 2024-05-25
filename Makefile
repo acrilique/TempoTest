@@ -12,6 +12,8 @@ CC = gcc # C compiler
 
 CFLAGS = -Wall -Wextra -pedantic -std=c17 -g # 0 warnings is what we aim for
 
+C_LIBS = -lm -lraylib
+
 SOURCES = $(wildcard $(BTT_SOURCES_DIR)*.c) $(wildcard $(TOPDIR)/*.c)
 OBJECTS = $(patsubst %.c,%.o,$(SOURCES))
 TARGET = $(TOPDIR)/wave
@@ -19,10 +21,10 @@ TARGET = $(TOPDIR)/wave
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(CFLAGS) $(OBJECTS) -o $(TARGET) -lm
+	$(CC) $(CFLAGS) $(OBJECTS) -o $(TARGET) $(C_LIBS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@ -lm
+	$(CC) $(CFLAGS) -c $< -o $@ $(C_LIBS)
 
 clean:
 	rm -f $(OBJECTS) $(TARGET)

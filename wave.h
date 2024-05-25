@@ -1,6 +1,23 @@
+#ifndef _WAVE_H
+#define _WAVE_H
+
 #include <stdio.h>
 
 // WAVE file header format
+
+enum _WAVE_READ_RETURN {
+	WAVE_READ_SUCCESS = 0,
+	WAVE_READ_EOF = -1, 
+	WAVE_READ_ERROR = -2
+};
+
+typedef enum _WAVE_READ_RETURN WAVE_READ_RETURN;
+
+struct _WAVE_READ_RETURN_DESC {
+	int code;
+	char *message;
+};
+extern struct _WAVE_READ_RETURN_DESC WAVE_READ_RETURN_DESC[];
 
 struct HEADER {
 	unsigned char riff[4];						// RIFF string
@@ -19,13 +36,18 @@ struct HEADER {
 };
 
 typedef struct WAVE {
-	struct HEADER *header;
-	FILE *ptr;
-	unsigned long num_samples;
+	struct HEADER *header;						// HEADER struct
+	FILE *ptr;												// Struct to hold pointer to a FILE
+	unsigned long num_samples;				// Number of samples in the audio file (a sample includes left and right channel)
+	int is_open;
 } WAVE;
 
-void wave_open(struct WAVE *wav, const char *file_path);
+int wave_init(struct WAVE *wav);
+
+int wave_open(struct WAVE *wav, const char *file_path);
 
 void wave_close(struct WAVE *wav);
 
-float** wave_read(struct WAVE *wav, unsigned int num_samples);
+int wave_read(struct WAVE *wav, unsigned int num_samples, float **samples);
+
+#endif // _WAVE_H
