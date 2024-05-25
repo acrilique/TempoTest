@@ -9,3 +9,4 @@ lib/Beat-and-Tempo-Tracking/*.o
 lib/Beat-and-Tempo-Tracking/src/*.o
 .vscode/
 Makefile~
+tester

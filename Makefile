@@ -16,7 +16,7 @@ C_LIBS = -lm -lraylib
 
 SOURCES = $(wildcard $(BTT_SOURCES_DIR)*.c) $(wildcard $(TOPDIR)/*.c)
 OBJECTS = $(patsubst %.c,%.o,$(SOURCES))
-TARGET = $(TOPDIR)/wave
+TARGET = $(TOPDIR)/tester
 
 all: $(TARGET)
 
