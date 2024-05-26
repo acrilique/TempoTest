@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "lib/Beat-and-Tempo-Tracking/BTT.h"
 
@@ -17,6 +18,8 @@
 #define GUI_WINDOW_FILE_DIALOG_IMPLEMENTATION
 #include "lib/raygui/examples/custom_file_dialog/gui_window_file_dialog.h"
 
+int nanosleep(const struct timespec *req, struct timespec *rem);
+
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;
@@ -29,7 +32,7 @@ float last_tempo = 0;
 int stop_reading_flag = 0;
 int audio_thead_open = 1; // 1 if closed, 0 if open
 
-void audio_thread(BTT *btt);
+void *audio_thread(void *arg);
 
 int max(int a, int b) {
     return a > b ? a : b;
@@ -71,7 +74,6 @@ int main()
     InitWindow(800, 600, "BTT Test");
 
     GuiWindowFileDialogState fileDialogState = InitGuiWindowFileDialog(GetWorkingDirectory());
-    bool exitWindow = false;
     char fileNameToLoad[512] = { 0 };
 
     SetTargetFPS(60);
@@ -86,12 +88,12 @@ int main()
                     pthread_join(tempo_thread, NULL);
                     wave_close(&wav);
                 }
-                strncat(fileNameToLoad, (const char*) fileDialogState.dirPathText, 512);
-                strncat(fileNameToLoad, "/", 1);
+                strncat(fileNameToLoad, (const char*) fileDialogState.dirPathText, 511);
+                strncat(fileNameToLoad, "/", sizeof(fileNameToLoad) - strlen(fileNameToLoad) - 1);
                 strncat(fileNameToLoad, (const char*) fileDialogState.fileNameText, 512 - strlen(fileNameToLoad));
                 wave_open(&wav, (const char*) fileNameToLoad);
                 
-                audio_thead_open = pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
+                audio_thead_open = pthread_create(&tempo_thread, NULL, audio_thread, btt);
                 
             }
 
@@ -139,7 +141,7 @@ int main()
             wave_close(&wav);
             wave_open(&wav, (const char *) fileNameToLoad);
             circular_buffer_flush(cb);
-            audio_thead_open = pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
+            audio_thead_open = pthread_create(&tempo_thread, NULL, audio_thread, btt);
         }
 
         if (GuiButton((Rectangle){ 280, 0, 140, 30 }, "Restart")) {
@@ -147,7 +149,7 @@ int main()
             pthread_join(tempo_thread, NULL);
             wave_close(&wav);
             wave_open(&wav, (const char *) fileNameToLoad);
-            audio_thead_open = pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
+            audio_thead_open = pthread_create(&tempo_thread, NULL, audio_thread, btt);
         }
         
         if (GuiSlider((Rectangle){ 180, 150, 140, 20 }, "Autocorrelation Exponent", autocorr_exponent_str, &autocorr_exponent, 0.1, 2.0)) {
@@ -208,11 +210,12 @@ int main()
     return 0;
 }
 
-void audio_thread(BTT *btt) {
+void *audio_thread(void* arg) {
+    BTT *btt = (BTT *) arg;
     unsigned int buffer_size = 4;
     dft_sample_t buffer[buffer_size];
     float *samples[buffer_size];
-    for (int i = 0; i < buffer_size; i++) {
+    for (unsigned int i = 0; i < buffer_size; i++) {
         samples[i] = (float *) malloc(sizeof(float) * 2);
     }
     int ret = 0;
@@ -224,7 +227,7 @@ void audio_thread(BTT *btt) {
 
     while (ret == WAVE_READ_SUCCESS && !stop_reading_flag) {
         ret = wave_read(&wav, buffer_size, samples);
-        for (int i = 0; i < buffer_size - 1; i++) {
+        for (unsigned int i = 0; i < buffer_size - 1; i++) {
             buffer[i] = samples[i][0];
             pthread_mutex_lock(&mutex2);
             circular_buffer_push(cb, samples[i][0]);
@@ -239,9 +242,11 @@ void audio_thread(BTT *btt) {
         // Wait for the calculated time interval before processing the next sample
         nanosleep(&ts, NULL);
     }
-    for (int i = 0; i < buffer_size; i++) {
+    for (unsigned int i = 0; i < buffer_size; i++) {
         free(samples[i]);
     }
     stop_reading_flag = 0;
     audio_thead_open = 1;
+
+    return NULL;
 }
