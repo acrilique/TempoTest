@@ -23,6 +23,7 @@ pthread_t tempo_thread;
 
 WAVE wav;
 CircularBuffer *cb;
+
 float last_tempo = 0;
 int stop_reading_flag = 0;
 int audio_thead_open = 1; // 1 if closed, 0 if open
@@ -49,6 +50,23 @@ int main()
     char *autocorr_exponent_str = malloc(32);
     snprintf(autocorr_exponent_str, 32, "%f", autocorr_exponent);
 
+    float gaussian_tempo_histogram_decay = 0.999;
+    char *gaussian_tempo_histogram_decay_str = malloc(32);
+    snprintf(gaussian_tempo_histogram_decay_str, 32, "%f", gaussian_tempo_histogram_decay);
+
+    float gaussian_tempo_histogram_width = 5;
+    char *gaussian_tempo_histogram_width_str = malloc(32);
+    snprintf(gaussian_tempo_histogram_width_str, 32, "%f", gaussian_tempo_histogram_width);
+
+    float log_gaussian_tempo_weight_mean = 120;
+    char *log_gaussian_tempo_weight_mean_str = malloc(32);
+    snprintf(log_gaussian_tempo_weight_mean_str, 32, "%f", log_gaussian_tempo_weight_mean);
+
+    float log_gaussian_tempo_weight_width = 75;
+    char *log_gaussian_tempo_weight_width_str = malloc(32);
+    snprintf(log_gaussian_tempo_weight_width_str, 32, "%f", log_gaussian_tempo_weight_width);
+
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(800, 600, "BTT Test");
 
     GuiWindowFileDialogState fileDialogState = InitGuiWindowFileDialog(GetWorkingDirectory());
@@ -107,14 +125,45 @@ int main()
             DrawText((const char *) tempo_string, GetScreenWidth() / 4, 2 * GetScreenHeight() / 3, GetScreenWidth() / 10, GREEN);
 
         if (GuiButton((Rectangle){ 0, 0, 140, 30 }, GuiIconText(ICON_FILE_OPEN, "Open Wave File"))) fileDialogState.windowActive = true;
+
+        // "Restart" button. Should go to the beggining of the wave file (we probably need another mutex for this)
+        // and should also destroy btt, create a new btt and set its parameters to current parameters.
+        //if (GuiButton())
         
-        if (GuiSlider((Rectangle){ 170, 150, 140, 20 }, "Autocorrelation Exponent", autocorr_exponent_str, &autocorr_exponent, 0.1, 2.0)) {
+        if (GuiSlider((Rectangle){ 180, 150, 140, 20 }, "Autocorrelation Exponent", autocorr_exponent_str, &autocorr_exponent, 0.1, 2.0)) {
             pthread_mutex_lock(&mutex1);
             btt_set_autocorrelation_exponent(btt, autocorr_exponent);
             pthread_mutex_unlock(&mutex1);
             snprintf(autocorr_exponent_str, 32, "%f", autocorr_exponent);
         }
 
+        if (GuiSlider((Rectangle){ 180, 180, 140, 20 }, "Gaussian Tempo Histogram Decay", gaussian_tempo_histogram_decay_str, &gaussian_tempo_histogram_decay, 0.6, 1.0)) {
+            pthread_mutex_lock(&mutex1);
+            btt_set_gaussian_tempo_histogram_decay(btt, gaussian_tempo_histogram_decay);
+            pthread_mutex_unlock(&mutex1);
+            snprintf(gaussian_tempo_histogram_decay_str, 32, "%f", gaussian_tempo_histogram_decay);
+        }
+
+        if (GuiSlider((Rectangle){ 180, 210, 140, 20 }, "Gaussian Tempo Histogram Width", gaussian_tempo_histogram_width_str, &gaussian_tempo_histogram_width, 0.0, 10.0)) {
+            pthread_mutex_lock(&mutex1);
+            btt_set_gaussian_tempo_histogram_width(btt, gaussian_tempo_histogram_width);
+            pthread_mutex_unlock(&mutex1);
+            snprintf(gaussian_tempo_histogram_width_str, 32, "%f", gaussian_tempo_histogram_width);
+        }
+
+        if (GuiSlider((Rectangle){ 180, 240, 140, 20 }, "Log Gaussian Tempo Weight Mean", log_gaussian_tempo_weight_mean_str, &log_gaussian_tempo_weight_mean, 0.0, 240.0)) {
+            pthread_mutex_lock(&mutex1);
+            btt_set_log_gaussian_tempo_weight_mean(btt, log_gaussian_tempo_weight_mean);
+            pthread_mutex_unlock(&mutex1);
+            snprintf(log_gaussian_tempo_weight_mean_str, 32, "%f", log_gaussian_tempo_weight_mean);
+        }
+
+        if (GuiSlider((Rectangle){ 180, 270, 140, 20 }, "Log Gaussian Tempo Weight Width", log_gaussian_tempo_weight_width_str, &log_gaussian_tempo_weight_width, 0.0, 150.0)) {
+            pthread_mutex_lock(&mutex1);
+            btt_set_log_gaussian_tempo_weight_width(btt, log_gaussian_tempo_weight_width);
+            pthread_mutex_unlock(&mutex1);
+            snprintf(log_gaussian_tempo_weight_width_str, 32, "%f", log_gaussian_tempo_weight_width);
+        }
 
         GuiUnlock();
 
