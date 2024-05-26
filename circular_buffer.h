@@ -35,4 +35,12 @@ void circular_buffer_push(struct CircularBuffer *cb, float value) {
     }
 }
 
+void circular_buffer_flush(struct CircularBuffer *cb) {
+    for (unsigned int i = 0; i < cb->size; i++) {
+        cb->buffer[i] = 0;
+    }
+    cb->head = 0;
+    cb->tail = 0;
+}
+
 #endif // _CIRCULAR_BUFFER_H

@@ -19,6 +19,7 @@
 
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;
 pthread_t tempo_thread;
 
 WAVE wav;
@@ -71,6 +72,7 @@ int main()
 
     GuiWindowFileDialogState fileDialogState = InitGuiWindowFileDialog(GetWorkingDirectory());
     bool exitWindow = false;
+    char fileNameToLoad[512] = { 0 };
 
     SetTargetFPS(60);
     while(!WindowShouldClose()) {
@@ -79,13 +81,11 @@ int main()
         {
             if (IsFileExtension(fileDialogState.fileNameText, ".wav"))
             {
-                // TODO Close old track if opened, open new track...
                 if (wav.is_open) {
                     stop_reading_flag = 1;
                     pthread_join(tempo_thread, NULL);
                     wave_close(&wav);
                 }
-                char fileNameToLoad[512] = { 0 };
                 strncat(fileNameToLoad, (const char*) fileDialogState.dirPathText, 512);
                 strncat(fileNameToLoad, "/", 1);
                 strncat(fileNameToLoad, (const char*) fileDialogState.fileNameText, 512 - strlen(fileNameToLoad));
@@ -126,9 +126,29 @@ int main()
 
         if (GuiButton((Rectangle){ 0, 0, 140, 30 }, GuiIconText(ICON_FILE_OPEN, "Open Wave File"))) fileDialogState.windowActive = true;
 
-        // "Restart" button. Should go to the beggining of the wave file (we probably need another mutex for this)
-        // and should also destroy btt, create a new btt and set its parameters to current parameters.
-        //if (GuiButton())
+        if (GuiButton((Rectangle){ 140, 0, 140, 30 }, "Restart (flush)")) {
+            stop_reading_flag = 1;
+            pthread_join(tempo_thread, NULL);
+            btt_destroy(btt);
+            btt = btt_new_default();
+            btt_set_tracking_mode(btt, BTT_ONSET_AND_TEMPO_TRACKING);
+            btt_set_gaussian_tempo_histogram_decay(btt, gaussian_tempo_histogram_decay);
+            btt_set_gaussian_tempo_histogram_width(btt, gaussian_tempo_histogram_width);
+            btt_set_log_gaussian_tempo_weight_mean(btt, log_gaussian_tempo_weight_mean);
+            btt_set_log_gaussian_tempo_weight_width(btt, log_gaussian_tempo_weight_width);
+            wave_close(&wav);
+            wave_open(&wav, (const char *) fileNameToLoad);
+            circular_buffer_flush(cb);
+            audio_thead_open = pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
+        }
+
+        if (GuiButton((Rectangle){ 280, 0, 140, 30 }, "Restart")) {
+            stop_reading_flag = 1;
+            pthread_join(tempo_thread, NULL);
+            wave_close(&wav);
+            wave_open(&wav, (const char *) fileNameToLoad);
+            audio_thead_open = pthread_create(&tempo_thread, NULL, (void *) audio_thread, btt);
+        }
         
         if (GuiSlider((Rectangle){ 180, 150, 140, 20 }, "Autocorrelation Exponent", autocorr_exponent_str, &autocorr_exponent, 0.1, 2.0)) {
             pthread_mutex_lock(&mutex1);
