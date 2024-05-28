@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
+#include <soundio/soundio.h>
 
 #include "lib/Beat-and-Tempo-Tracking/BTT.h"
 
@@ -22,7 +23,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem);
 
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;
+pthread_rwlock_t rwlock1 = PTHREAD_RWLOCK_INITIALIZER;
 pthread_t tempo_thread;
 
 WAVE wav;
@@ -38,6 +39,42 @@ int max(int a, int b) {
     return a > b ? a : b;
 }
 
+static void write_callback(struct SoundIoOutStream *outstream, int frame_count_min, int frame_count_max)
+{
+    const struct SoundIoChannelLayout *layout = &outstream->layout;
+    float float_sample_rate = outstream->sample_rate;
+    struct SoundIoChannelArea *areas;
+    int frames_left = frame_count_max;
+    int err;
+
+    while (frames_left > 0) {
+        int frame_count = frames_left;
+
+        if ((err = soundio_outstream_begin_write(outstream, &areas, &frame_count))) {
+            fprintf(stderr, "%s\n", soundio_strerror(err));
+            exit(1);
+        }
+
+        if (!frame_count)
+            break;
+
+        float pitch = 440.0f;
+        float radians_per_second = pitch * 2.0f * PI;
+        for (int frame = 0; frame < frame_count; frame += 1) {
+            for (int channel = 0; channel < layout->channel_count; channel += 1) {
+                float *ptr = (float*)(areas[channel].ptr + areas[channel].step * frame);
+                // *ptr = sample;
+            }
+        }
+        if ((err = soundio_outstream_end_write(outstream))) {
+            fprintf(stderr, "%s\n", soundio_strerror(err));
+            exit(1);
+        }
+
+        frames_left -= frame_count;
+    }
+}
+
 int main()
 {
     BTT *btt = btt_new_default();
@@ -45,7 +82,7 @@ int main()
 
     wave_init(&wav);
 
-    cb = circular_buffer_new(16000);
+    cb = circular_buffer_new(16000, 2);
 
     btt_set_tracking_mode(btt, BTT_ONSET_AND_TEMPO_TRACKING);
     btt_set_gaussian_tempo_histogram_decay(btt, 0.999);
@@ -105,18 +142,19 @@ int main()
 
         if (fileDialogState.windowActive) GuiLock();
 
-        pthread_mutex_lock(&mutex2);
-        int step = max(1, (int) cb->size / GetScreenWidth());
-        int x = 0;
-        for (int i = 0; i < GetScreenWidth(); i++) {
-            int index = (cb->head + i * step) % cb->size;
-            DrawLine(x, GetScreenHeight() / 8 - cb->buffer[index] * GetScreenHeight() / 8,
-                     x + 1, GetScreenHeight() / 8 - cb->buffer[index + step] * GetScreenHeight() / 8,
-                     RED);
-            x++;
+        if (cb->head > 0 || cb->tail > 0) {
+            pthread_rwlock_rdlock(&rwlock1);
+            int step = max(1, (int) cb->size / GetScreenWidth());
+            int x = 0;
+            for (int i = 0; i < GetScreenWidth(); i++) {
+                int index = (cb->head + i * step) % cb->size;
+                DrawLine(x, GetScreenHeight() / 8 - cb->buffer[index][0] * GetScreenHeight() / 8,
+                        x + 1, GetScreenHeight() / 8 - cb->buffer[index + step][0] * GetScreenHeight() / 8,
+                        RED);
+                x++;
+            }
+            pthread_rwlock_unlock(&rwlock1);
         }
-        pthread_mutex_unlock(&mutex2);
-
         pthread_mutex_lock(&mutex1);
         int ret = snprintf(tempo_string, 32, "%f", last_tempo);
         pthread_mutex_unlock(&mutex1);
@@ -229,9 +267,9 @@ void *audio_thread(void* arg) {
         ret = wave_read(&wav, buffer_size, samples);
         for (unsigned int i = 0; i < buffer_size - 1; i++) {
             buffer[i] = samples[i][0];
-            pthread_mutex_lock(&mutex2);
-            circular_buffer_push(cb, samples[i][0]);
-            pthread_mutex_unlock(&mutex2);
+            pthread_rwlock_wrlock(&rwlock1);
+            circular_buffer_push(cb, samples[i]);
+            pthread_rwlock_unlock(&rwlock1);
         }
         
         btt_process(btt, buffer, buffer_size);

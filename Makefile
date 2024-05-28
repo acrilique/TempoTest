@@ -10,9 +10,9 @@ BTT_SOURCES_DIR := $(BTT_DIR)src/
 
 CC = gcc # C compiler
 
-CFLAGS = -Wall -Wextra -pedantic -std=c17 -g # 0 warnings is what we aim for
+CFLAGS = -Wall -Wextra -pedantic -std=gnu17 -g # 0 warnings is what we aim for
 
-C_LIBS = -lm -lraylib
+C_LIBS = -lm -lraylib -lsoundio
 
 SOURCES = $(wildcard $(BTT_SOURCES_DIR)*.c) $(wildcard $(TOPDIR)/*.c)
 OBJECTS = $(patsubst %.c,%.o,$(SOURCES))
