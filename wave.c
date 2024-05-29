@@ -214,3 +214,26 @@ int wave_read(struct WAVE *wav, unsigned int num_samples, float **samples) {
 	return WAVE_READ_SUCCESS;
 }
 
+unsigned long wave_resample(const float *input, float *output, int inSampleRate, int outSampleRate, unsigned long inputSize, unsigned int channels) {
+
+  if (input == NULL)
+    return 0;
+  unsigned long outputSize = (unsigned long) (inputSize * (double) outSampleRate / (double) inSampleRate);
+  outputSize -= outputSize % channels;
+  if (output == NULL)
+    return outputSize;
+  double stepDist = ((double) inSampleRate / (double) outSampleRate);
+  const unsigned long fixedFraction = (1LL << 32);
+  const double normFixed = (1.0 / (1LL << 32));
+  unsigned long step = ((unsigned long) (stepDist * fixedFraction + 0.5));
+  unsigned long curOffset = 0;
+  for (unsigned int i = 0; i < outputSize; i += 1) {
+    for (unsigned int c = 0; c < channels; c += 1) {
+      *output++ = (float) (input[c] + (input[c + channels] - input[c]) * ((double) (curOffset >> 32) + ((curOffset & (fixedFraction - 1)) * normFixed)));
+		}
+		curOffset += step;
+		input += (curOffset >> 32) * channels;
+		curOffset &= (fixedFraction - 1);
+	}
+	return outputSize;
+}

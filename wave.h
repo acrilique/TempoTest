@@ -11,7 +11,7 @@ enum _WAVE_READ_RETURN {
 	WAVE_READ_ERROR = -2
 };
 
-typedef enum _WAVE_READ_RETURN WAVE_READ_RETURN;
+typedef int WAVE_READ_RETURN;
 
 struct _WAVE_READ_RETURN_DESC {
 	int code;
@@ -39,6 +39,7 @@ typedef struct WAVE {
 	struct HEADER *header;						// HEADER struct
 	FILE *ptr;												// Struct to hold pointer to a FILE
 	unsigned long num_samples;				// Number of samples in the audio file (a sample includes left and right channel)
+	float **resampled_samples;				// Resampled samples
 	int is_open;
 } WAVE;
 
@@ -49,5 +50,7 @@ int wave_open(struct WAVE *wav, const char *file_path);
 void wave_close(struct WAVE *wav);
 
 int wave_read(struct WAVE *wav, unsigned int num_samples, float **samples);
+
+unsigned long wave_resample(struct WAVE *wav, float *output, int inSampleRate, int outSampleRate, unsigned long inputSize, unsigned int channels);
 
 #endif // _WAVE_H
