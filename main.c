@@ -13,11 +13,11 @@
 #include "raylib.h"
 
 #define RAYGUI_IMPLEMENTATION
-#include "lib/raylib/examples/shapes/raygui.h"
+#include "lib/raygui.h"
 
 #undef RAYGUI_IMPLEMENTATION
 #define GUI_WINDOW_FILE_DIALOG_IMPLEMENTATION
-#include "lib/raygui/examples/custom_file_dialog/gui_window_file_dialog.h"
+#include "lib/gui_window_file_dialog.h"
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
