@@ -3,6 +3,11 @@
 
 #include <stdio.h>
 
+#define wave_open(wav, file_path, ...) _Generic((0, ##__VA_ARGS__), \
+	unsigned int: wave_open_sample_rate, \
+	default: wave_open_default \
+)(wav, file_path, ##__VA_ARGS__)
+
 // WAVE file header format
 
 enum _WAVE_READ_RETURN {
@@ -39,18 +44,20 @@ typedef struct WAVE {
 	struct HEADER *header;						// HEADER struct
 	FILE *ptr;												// Struct to hold pointer to a FILE
 	unsigned long num_samples;				// Number of samples in the audio file (a sample includes left and right channel)
-	float **resampled_samples;				// Resampled samples
+	float *samples;				// Stored samples
 	int is_open;
 } WAVE;
 
 int wave_init(struct WAVE *wav);
 
-int wave_open(struct WAVE *wav, const char *file_path);
+int wave_open_default(struct WAVE *wav, const char *file_path);
+
+int wave_open_sample_rate(struct WAVE *wav, const char *file_path, unsigned int desired_sample_rate);
 
 void wave_close(struct WAVE *wav);
 
-int wave_read(struct WAVE *wav, unsigned int num_samples, float **samples);
+int wave_read(struct WAVE *wav);
 
-unsigned long wave_resample(struct WAVE *wav, float *output, int inSampleRate, int outSampleRate, unsigned long inputSize, unsigned int channels);
+int wave_resample(struct WAVE *wav, int outSampleRate);
 
 #endif // _WAVE_H
