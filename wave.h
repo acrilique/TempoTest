@@ -3,13 +3,6 @@
 
 #include <stdio.h>
 
-#define wave_open(wav, file_path, ...) _Generic((0, ##__VA_ARGS__), \
-	unsigned int: wave_open_sample_rate, \
-	default: wave_open_default \
-)(wav, file_path, ##__VA_ARGS__)
-
-// WAVE file header format
-
 enum _WAVE_READ_RETURN {
 	WAVE_READ_SUCCESS = 0,
 	WAVE_READ_EOF = -1, 
@@ -48,16 +41,69 @@ typedef struct WAVE {
 	int is_open;
 } WAVE;
 
+/**
+ * Init WAVE object
+ * @param WAVE* wav - pointer to wave object
+ **/
 int wave_init(struct WAVE *wav);
 
-int wave_open_default(struct WAVE *wav, const char *file_path);
+/**
+ * Open wave file pointer and save header data.
+ * It also reads the audio samples, it calls
+ * wave_read.
+ * @param WAVE* wav - pointer to wave object
+ * @param char* file_path - path to wave file
+ **/
+int wave_open(struct WAVE *wav, const char *file_path);
 
-int wave_open_sample_rate(struct WAVE *wav, const char *file_path, unsigned int desired_sample_rate);
+/**
+ * Shortcut that allows you to pass a specific desired
+ * sample rate for the samples. If it's different than
+ * the one in the header, it will resample the audio.
+ * It calls wave_open and wave_resample.
+ * @param WAVE* wav - pointer to wave object
+ * @param char* file_path - path to wave file
+ * @param unsigned int desired_sample_rate - desired sample rate
+ **/
+int wave_open_resample(struct WAVE *wav, const char *file_path, unsigned int desired_sample_rate);
 
+/**
+ * Close wave object (release resources)
+ * @param WAVE* wav - pointer to wave object
+ **/
 void wave_close(struct WAVE *wav);
 
+/**
+ * Read samples from wave file and store them in the
+ * wave object. It will allocate memory for the samples
+ * and store them in the samples array.
+ * @param WAVE* wav - pointer to wave object
+ **/
 int wave_read(struct WAVE *wav);
 
+/**
+ * Resample audio to a different sample rate. It will
+ * allocate memory for the new samples and replace the
+ * pointer in the wave object. You will be able to get 
+ * samples in the same way after calling this function.
+ * @param WAVE* wav - pointer to wave object
+ * @param int outSampleRate - desired sample rate
+ **/
 int wave_resample(struct WAVE *wav, int outSampleRate);
+
+/**
+ * Write wave file from wave object
+ * @param WAVE* wav - pointer to wave object
+ * @param const char *file_path - path to wave file
+ **/
+int wave_write(struct WAVE *wav, const char *file_path);
+
+/**
+ * Get a copy of the audio samples from wave object
+ * (you're responsible for freeing it). Remember that
+ * the samples are interleaved (left channel, then right, then left...).
+ * @param WAVE* wav - pointer to wave object
+ **/
+float *wave_copy_samples(struct WAVE *wav);
 
 #endif // _WAVE_H

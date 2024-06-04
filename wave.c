@@ -23,23 +23,27 @@ unsigned int le2int32bit(unsigned char *bytes) {
 	return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
 }
 
-/**
- * Init WAVE object
- * @param struct WAVE wav* - pointer to wave object
- **/
+void int2le16bit(unsigned char *bytes, unsigned int value) {
+	bytes[0] = value & 0xff;
+	bytes[1] = (value >> 8) & 0xff;
+	return;
+}
+
+void int2le32bit(unsigned char *bytes, unsigned int value) {
+	bytes[0] = value & 0xff;
+	bytes[1] = (value >> 8) & 0xff;
+	bytes[2] = (value >> 16) & 0xff;
+	bytes[3] = (value >> 24) & 0xff;
+	return;
+}
+
 int wave_init(struct WAVE *wav){
+	wav = (struct WAVE*) malloc(sizeof(struct WAVE));
 	wav->is_open = 0;
 	return 0;
 }
 
-/**
- * Open wave file pointer and read its header
- * until the beggining of the data section
- * (ready to read samples).
- * @param struct WAVE wav* - pointer to wave object
- * @param char *file_path - path to wave file
- **/
-int wave_open_default(struct WAVE *wav, const char *file_path){
+int wave_open(struct WAVE *wav, const char *file_path){
 
 	unsigned char buffer4[4];
 	unsigned char buffer2[2];
@@ -68,10 +72,10 @@ int wave_open_default(struct WAVE *wav, const char *file_path){
 	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* Length of format chunk */
 	wav->header->length_of_fmt = le2int32bit(buffer4); /* 16: PCM, 18: Non-PCM, 40: Extensible */
 
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Format type. 0x0001: PCM, 0x0003: IEEE float */
+	read = fread(buffer2, 2, 1, wav->ptr); /* Format type. 0x0001: PCM, 0x0003: IEEE float */
 	wav->header->format_type = le2int16bit(buffer2); /* 0x0006: A-law, 0x0007: mu-law, 0xFFFE: Extensible */
 
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Number of channels */
+	read = fread(buffer2, 2, 1, wav->ptr); /* Number of channels */
 	wav->header->channels = le2int16bit(buffer2);
 
 	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* Sample rate */
@@ -80,19 +84,19 @@ int wave_open_default(struct WAVE *wav, const char *file_path){
 	read = fread(buffer4, sizeof(buffer4), 1, wav->ptr); /* Average bytes per second */
 	wav->header->byterate = le2int32bit(buffer4); /* Samplerate x bytes per sample x Num. channels */
 
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); /* Block align */
+	read = fread(buffer2, 2, 1, wav->ptr); /* Block align */
 	wav->header->block_align = le2int16bit(buffer2); /* Bytes per sample x Num. channels */
 
 	/* Now we will check if this file is PCM or not, and parse the extra fields if necessary. */
 	if (wav->header->length_of_fmt > 16) {
-		read = fread(buffer2, sizeof(buffer2), 1, wav->ptr); 
+		read = fread(buffer2, 2, 1, wav->ptr); 
 	
 		if (wav->header->length_of_fmt > 18) { /* Assume it has length 40. */
 			
 		}
 	} 
 
-	read = fread(buffer2, sizeof(buffer2), 1, wav->ptr);
+	read = fread(buffer2, 2, 1, wav->ptr);
 	wav->header->bits_per_sample = le2int16bit(buffer2);
 
 	read = fread(wav->header->data_chunk_header, sizeof(wav->header->data_chunk_header), 1, wav->ptr);
@@ -102,25 +106,23 @@ int wave_open_default(struct WAVE *wav, const char *file_path){
 
 	wav->num_samples = (8 * (wav->header->data_size - 8)) / (wav->header->channels * wav->header->bits_per_sample) - 8;
 
-	wave_read(wav);
 	wav->is_open = 1;
 
+	wave_read(wav);
+	
 	return 0;
 }
 
-int wave_open_sample_rate(struct WAVE *wav, const char *file_path, unsigned int desired_sample_rate) {
-	wave_open_default(wav, file_path);
+int wave_open_resample(struct WAVE *wav, const char *file_path, unsigned int desired_sample_rate) {
+	wave_open(wav, file_path);
+	wave_read(wav);
 
 	if (desired_sample_rate != wav->header->sample_rate)
 		wave_resample(wav, desired_sample_rate);
 
-	return;
+	return 0;
 }
 
-/**
- * Close wave file (release resources)
- * @param struct WAVE wav - wave object
- **/
 void wave_close(struct WAVE *wav) {
 	fclose(wav->ptr);
 	free(wav->header);
@@ -128,19 +130,6 @@ void wave_close(struct WAVE *wav) {
 	wav->is_open = 0;
 }
 
-/**
- * Read certain amount of samples from wave file
- * and return an array of samples. Samples should be
- * pre-allocated like this:
- * float *samples[num_samples];
- * for (int i = 0; i < num_samples; i++) {
- * 	samples[i] = (float *) malloc(sizeof(float) * num_channels);
- * }
- * @param wav WAVE *wav - pointer to wave object
- * @param num_samples unsigned int - number of samples to read
- * @param samples float ** - two dimensional array of float samples (allocated!)
- * @return int - indicates how the read ended. For the return codes, check WAVE_READ_RETURN_DESC
- **/
 int wave_read(struct WAVE *wav) {
 
 	wav->samples = (float *) malloc(sizeof(float) * wav->num_samples * wav->header->channels);
@@ -211,7 +200,7 @@ int wave_read(struct WAVE *wav) {
 					if (data_in_channel < low_limit) data_in_channel = low_limit;
 					else if (data_in_channel > high_limit) data_in_channel = high_limit;
 					
-					float sample = (float) data_in_channel / high_limit;
+					float sample = (float) data_in_channel / (high_limit + 1);
 					wav->samples[i * channels + xchannels] = sample;
 
 				}
@@ -233,36 +222,78 @@ int wave_read(struct WAVE *wav) {
 }
 
 int wave_resample(struct WAVE *wav, int outSampleRate) {
-	unsigned int channels = wav->header->channels;
-	unsigned long inSampleRate = wav->header->sample_rate;
-	unsigned int inputSize = wav->num_samples * channels;
-	
-	float *input = wav->samples;
+	unsigned long new_num_samples = (unsigned long) ((wav->num_samples * outSampleRate) / wav->header->sample_rate);
+	float *output = (float *) malloc(sizeof(float) * new_num_samples * wav->header->channels);
 
-  unsigned long outputSize = (unsigned long) (inputSize * (double) outSampleRate / (double) inSampleRate);
-  outputSize -= outputSize % channels;
-
-	float *output = (float *) malloc(outputSize * sizeof(float));
-	if (output == NULL) {
-		return 1;
-	}
-
-  double stepDist = ((double) inSampleRate / (double) outSampleRate);
-  const unsigned long fixedFraction = (1LL << 32);
-  const double normFixed = (1.0 / (1LL << 32));
-  unsigned long step = ((unsigned long) (stepDist * fixedFraction + 0.5));
-  unsigned long curOffset = 0;
-  for (unsigned int i = 0; i < outputSize; i += 1) {
-    for (unsigned int c = 0; c < channels; c += 1) {
-      *output++ = (float) (input[c] + (input[c + channels] - input[c]) * ((double) (curOffset >> 32) + ((curOffset & (fixedFraction - 1)) * normFixed)));
+	for (unsigned long i = 0; i < new_num_samples; i += 1) {
+		for (unsigned int c = 0; c < wav->header->channels; c += 1) {
+			output[i * wav->header->channels + c] = wav->samples[(unsigned long) ((i * wav->header->sample_rate) / outSampleRate) * wav->header->channels + c];
 		}
-		curOffset += step;
-		input += (curOffset >> 32) * channels;
-		curOffset &= (fixedFraction - 1);
 	}
 
+	wav->num_samples = new_num_samples;
+	wav->header->sample_rate = outSampleRate;
+
+	free(wav->samples);
 	wav->samples = output;
-	free(input);
 
 	return 0;
+}
+
+int wave_write(struct WAVE *wav, const char *file_path) {
+	FILE *file = fopen(file_path, "wb");
+	if (file == NULL) {
+		return 1;
+	}
+	unsigned char buffer1[4];
+	unsigned char buffer2[2];
+
+	fwrite(wav->header->riff, sizeof(wav->header->riff), 1, file);
+	int2le32bit(buffer1, wav->header->overall_size);
+	fwrite(buffer1, 4, 1, file);
+	fwrite(wav->header->wave, sizeof(wav->header->wave), 1, file);
+	fwrite(wav->header->fmt_chunk_marker, sizeof(wav->header->fmt_chunk_marker), 1, file);
+	int2le32bit(buffer1, wav->header->length_of_fmt);
+	fwrite(buffer1, 4, 1, file);
+	int2le16bit(buffer2, wav->header->format_type);
+	fwrite(buffer2, 2, 1, file);
+	int2le16bit(buffer2, wav->header->channels);
+	fwrite(buffer2, 2, 1, file);
+	int2le32bit(buffer1, wav->header->sample_rate);
+	fwrite(buffer1, 4, 1, file);
+	int2le32bit(buffer1, wav->header->byterate);
+	fwrite(buffer1, 4, 1, file);
+	int2le16bit(buffer2, wav->header->block_align);
+	fwrite(buffer2, 2, 1, file);
+	int2le16bit(buffer2, wav->header->bits_per_sample);
+	fwrite(buffer2, 2, 1, file);
+	fwrite(wav->header->data_chunk_header, sizeof(wav->header->data_chunk_header), 1, file);
+	int2le32bit(buffer1, wav->header->data_size);
+	fwrite(buffer1, 4, 1, file);
+	
+	for (unsigned long i = 0; i < wav->num_samples; i += 1) {
+		for (unsigned int c = 0; c < wav->header->channels; c += 1) {
+			if (wav->header->bits_per_sample == 8) {
+				buffer1[0] = (char) ((wav->samples[i * wav->header->channels + c] + 1.0) * 128);
+				fwrite(buffer1, 1, 1, file);
+			} else if (wav->header->bits_per_sample == 16) {
+				int2le16bit(buffer2, (unsigned int) ((wav->samples[i * wav->header->channels + c]) * 32768 - 1.0));
+				fwrite(buffer2, 2, 1, file);
+			} else if (wav->header->bits_per_sample == 32) {
+				int2le32bit(buffer1, (unsigned int) ((wav->samples[i * wav->header->channels + c]) * 2147483648 - 1.0));
+				fwrite(buffer1, 4, 1, file);
+			}
+		}
+	}
+
+	fclose(file);
+	return 0;
+}
+
+float *wave_copy_samples(struct WAVE *wav) {
+	float *output = (float *) malloc(sizeof(float) * wav->num_samples * wav->header->channels);
+	for (unsigned long i = 0; i < wav->num_samples * wav->header->channels; i += 1) {
+		output[i] = wav->samples[i];
+	}
+	return output;
 }
