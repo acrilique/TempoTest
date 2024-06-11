@@ -115,7 +115,6 @@ int wave_open(struct WAVE *wav, const char *file_path){
 
 int wave_open_resample(struct WAVE *wav, const char *file_path, unsigned int desired_sample_rate) {
 	wave_open(wav, file_path);
-	wave_read(wav);
 
 	if (desired_sample_rate != wav->header->sample_rate)
 		wave_resample(wav, desired_sample_rate);
@@ -222,22 +221,35 @@ int wave_read(struct WAVE *wav) {
 }
 
 int wave_resample(struct WAVE *wav, int outSampleRate) {
-	unsigned long new_num_samples = (unsigned long) ((wav->num_samples * outSampleRate) / wav->header->sample_rate);
-	float *output = (float *) malloc(sizeof(float) * new_num_samples * wav->header->channels);
+    double ratio = (double)outSampleRate / wav->header->sample_rate;
+    unsigned long new_num_samples = (unsigned long)(wav->num_samples * ratio);
+    float *output = (float *)malloc(sizeof(float) * new_num_samples * wav->header->channels);
 
-	for (unsigned long i = 0; i < new_num_samples; i += 1) {
-		for (unsigned int c = 0; c < wav->header->channels; c += 1) {
-			output[i * wav->header->channels + c] = wav->samples[(unsigned long) ((i * wav->header->sample_rate) / outSampleRate) * wav->header->channels + c];
-		}
-	}
+    for (unsigned long i = 0; i < new_num_samples; i++) {
+        double src_index = i / ratio; 
+        unsigned long index_part = (unsigned long)src_index;
+        double frac_part = src_index - index_part;
 
-	wav->num_samples = new_num_samples;
-	wav->header->sample_rate = outSampleRate;
+        for (unsigned int c = 0; c < wav->header->channels; c++) {
+            // Handle potential out-of-bounds access at the very end
+            if (index_part + 1 >= wav->num_samples) {
+                output[i * wav->header->channels + c] = wav->samples[(wav->num_samples - 1) * wav->header->channels + c]; 
+            } else {
+                float sample1 = wav->samples[index_part * wav->header->channels + c];
+                float sample2 = wav->samples[(index_part + 1) * wav->header->channels + c];
+                // Linear interpolation
+                output[i * wav->header->channels + c] = sample1 + (sample2 - sample1) * frac_part;
+            }
+        }
+    }
 
-	free(wav->samples);
-	wav->samples = output;
+    wav->num_samples = new_num_samples;
+    wav->header->sample_rate = outSampleRate;
 
-	return 0;
+    free(wav->samples);
+    wav->samples = output;
+
+    return 0;
 }
 
 int wave_write(struct WAVE *wav, const char *file_path) {
@@ -290,10 +302,12 @@ int wave_write(struct WAVE *wav, const char *file_path) {
 	return 0;
 }
 
-float *wave_copy_samples(struct WAVE *wav) {
-	float *output = (float *) malloc(sizeof(float) * wav->num_samples * wav->header->channels);
-	for (unsigned long i = 0; i < wav->num_samples * wav->header->channels; i += 1) {
-		output[i] = wav->samples[i];
+int wave_copy_samples(struct WAVE *wav, float *buffer) {
+	if (buffer == NULL) {
+		return WAVE_READ_ERROR;
 	}
-	return output;
+	for (unsigned long i = 0; i < wav->num_samples * wav->header->channels; i += 1) {
+		buffer[i] = wav->samples[i];
+	}
+	return WAVE_READ_SUCCESS;
 }

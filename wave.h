@@ -94,7 +94,7 @@ int wave_resample(struct WAVE *wav, int outSampleRate);
 /**
  * Write wave file from wave object
  * @param WAVE* wav - pointer to wave object
- * @param const char *file_path - path to wave file
+ * @param char* file_path - path to wave file
  **/
 int wave_write(struct WAVE *wav, const char *file_path);
 
@@ -104,6 +104,6 @@ int wave_write(struct WAVE *wav, const char *file_path);
  * the samples are interleaved (left channel, then right, then left...).
  * @param WAVE* wav - pointer to wave object
  **/
-float *wave_copy_samples(struct WAVE *wav);
+int wave_copy_samples(struct WAVE *wav, float *buffer);
 
 #endif // _WAVE_H

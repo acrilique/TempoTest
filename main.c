@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -23,7 +24,6 @@ int nanosleep(const struct timespec *req, struct timespec *rem);
 
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_rwlock_t rwlock1 = PTHREAD_RWLOCK_INITIALIZER;
 pthread_t analysys_thread, audio_thread;
 
 int stop_reading_flag = 0;
@@ -59,13 +59,11 @@ int main()
 {
     struct AnalysysThreadArgs *analysys_args = malloc(sizeof(struct AnalysysThreadArgs));
 
-    WAVE *wav = malloc(sizeof(WAVE));
-    wave_init(wav);
-    BTT *btt = btt_new_default();
+    analysys_args->wav = malloc(sizeof(WAVE));
+    wave_init(analysys_args->wav);
+    analysys_args->btt = btt_new_default();
     CircularBuffer *cb = circular_buffer_new(16000);
 
-    analysys_args->wav = wav;
-    analysys_args->btt = btt;
     analysys_args->cb = cb;
     analysys_args->last_tempo = 0.0;
 
@@ -93,8 +91,8 @@ int main()
 
     char tempo_string[32];
 
-    btt_set_tracking_mode(btt, BTT_ONSET_AND_TEMPO_TRACKING);
-    btt_set_gaussian_tempo_histogram_decay(btt, 0.999);
+    btt_set_tracking_mode(analysys_args->btt, BTT_ONSET_AND_TEMPO_TRACKING);
+    btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, 0.999);
 
     float autocorr_exponent = 0.5;
     char *autocorr_exponent_str = malloc(32);
@@ -129,31 +127,47 @@ int main()
         {
             if (IsFileExtension(fileDialogState.fileNameText, ".wav"))
             {
-                if (wav->is_open) {
-                    if (audio_args->no_audio_mode == false) {
-                        // do something to stop the audio playback
-                    }
+                if (analysys_args->wav->is_open) {
                     stop_reading_flag = 1;
+                    if (audio_args->no_audio_mode == false) {
+                        pthread_join(audio_thread, NULL);
+                    }
+                    
                     pthread_join(analysys_thread, NULL);
-                    wave_close(wav);
+                    wave_close(analysys_args->wav);
                 }
                 strncpy(fileNameToLoad, (const char*) fileDialogState.dirPathText, 511);
                 strncat(fileNameToLoad, "/", sizeof(fileNameToLoad) - strlen(fileNameToLoad) - 1);
                 strncat(fileNameToLoad, (const char*) fileDialogState.fileNameText, 512 - strlen(fileNameToLoad));
                 
-                wave_open(wav, (const char *) fileNameToLoad);
+                wave_open(analysys_args->wav, (const char *) fileNameToLoad);
                 if (!audio_args->no_audio_mode) {
-                    if (soundio_device_supports_sample_rate(device, wav->header->sample_rate)) {
-                        audio_args->sample_rate = wav->header->sample_rate;
+                    if (soundio_device_supports_sample_rate(device, analysys_args->wav->header->sample_rate)) {
+                        audio_args->sample_rate = analysys_args->wav->header->sample_rate;
                     } else {
-                        int nearest_sr = soundio_device_nearest_sample_rate(device, wav->header->sample_rate);
-                        wave_resample(wav, nearest_sr);
+                        int nearest_sr = soundio_device_nearest_sample_rate(device, analysys_args->wav->header->sample_rate);
+                        wave_resample(analysys_args->wav, nearest_sr);
                         audio_args->sample_rate = nearest_sr;
+                        analysys_args->btt = btt_destroy(analysys_args->btt);
+                        analysys_args->btt = btt_new(BTT_SUGGESTED_SPECTRAL_FLUX_STFT_LEN, 
+                                BTT_SUGGESTED_SPECTRAL_FLUX_STFT_OVERLAP, 
+                                BTT_SUGGESTED_OSS_FILTER_ORDER, BTT_SUGGESTED_OSS_LENGTH,
+                                BTT_SUGGESTED_CBSS_LENGTH, BTT_SUGGESTED_ONSET_THRESHOLD_N, 
+                                nearest_sr, 
+                                BTT_DEFAULT_ANALYSIS_LATENCY_ONSET_ADJUSTMENT, 
+                                BTT_DEFAULT_ANALYSIS_LATENCY_BEAT_ADJUSTMENT);
+                        btt_set_tracking_mode(analysys_args->btt, BTT_ONSET_AND_TEMPO_TRACKING);
+                        btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, gaussian_tempo_histogram_decay);
+                        btt_set_gaussian_tempo_histogram_width(analysys_args->btt, gaussian_tempo_histogram_width);
+                        btt_set_log_gaussian_tempo_weight_mean(analysys_args->btt, log_gaussian_tempo_weight_mean);
+                        btt_set_log_gaussian_tempo_weight_width(analysys_args->btt, log_gaussian_tempo_weight_width);
                     }
-                }
-                if (!audio_args->no_audio_mode) {
-                    audio_args->samples = wave_copy_samples(wav);
-                    audio_args->num_samples = wav->num_samples;
+                    audio_args->samples = (float *) malloc(sizeof(float) * analysys_args->wav->num_samples * analysys_args->wav->header->channels);
+                    if (wave_copy_samples(analysys_args->wav, audio_args->samples)) {
+                        fprintf(stderr, "Error copying the samples for the audio thread\n");
+                        audio_args->no_audio_mode = true;
+                    }
+                    audio_args->num_samples = analysys_args->wav->num_samples;
                     if ((audio_thread_open = pthread_create(&audio_thread, NULL, audio_thread_fn, audio_args)) != 0) {
                         fprintf(stderr, "Error creating audio thread\n");
                         audio_args->no_audio_mode = true;
@@ -198,17 +212,17 @@ int main()
                 pthread_join(analysys_thread, NULL);
             }
             
-            btt_destroy(btt);
-            btt = btt_new_default();
-            btt_set_tracking_mode(btt, BTT_ONSET_AND_TEMPO_TRACKING);
-            btt_set_gaussian_tempo_histogram_decay(btt, gaussian_tempo_histogram_decay);
-            btt_set_gaussian_tempo_histogram_width(btt, gaussian_tempo_histogram_width);
-            btt_set_log_gaussian_tempo_weight_mean(btt, log_gaussian_tempo_weight_mean);
-            btt_set_log_gaussian_tempo_weight_width(btt, log_gaussian_tempo_weight_width);
-            if (wav->is_open) {
-                wave_close(wav);
+            btt_destroy(analysys_args->btt);
+            analysys_args->btt = btt_new_default();
+            btt_set_tracking_mode(analysys_args->btt, BTT_ONSET_AND_TEMPO_TRACKING);
+            btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, gaussian_tempo_histogram_decay);
+            btt_set_gaussian_tempo_histogram_width(analysys_args->btt, gaussian_tempo_histogram_width);
+            btt_set_log_gaussian_tempo_weight_mean(analysys_args->btt, log_gaussian_tempo_weight_mean);
+            btt_set_log_gaussian_tempo_weight_width(analysys_args->btt, log_gaussian_tempo_weight_width);
+            if (analysys_args->wav->is_open) {
+                wave_close(analysys_args->wav);
             }            
-            wave_open(wav, (const char *) fileNameToLoad);
+            wave_open(analysys_args->wav, (const char *) fileNameToLoad);
             circular_buffer_flush(cb);
             
         }
@@ -234,27 +248,27 @@ int main()
         }
         
         if (GuiSlider((Rectangle){ 180, 150, 140, 20 }, "Autocorrelation Exponent", autocorr_exponent_str, &autocorr_exponent, 0.1, 2.0)) {
-            btt_set_autocorrelation_exponent(btt, autocorr_exponent);
+            btt_set_autocorrelation_exponent(analysys_args->btt, autocorr_exponent);
             snprintf(autocorr_exponent_str, 32, "%f", autocorr_exponent);
         }
 
         if (GuiSlider((Rectangle){ 180, 180, 140, 20 }, "Gaussian Tempo Histogram Decay", gaussian_tempo_histogram_decay_str, &gaussian_tempo_histogram_decay, 0.6, 1.0)) {
-            btt_set_gaussian_tempo_histogram_decay(btt, gaussian_tempo_histogram_decay);
+            btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, gaussian_tempo_histogram_decay);
             snprintf(gaussian_tempo_histogram_decay_str, 32, "%f", gaussian_tempo_histogram_decay);
         }
 
         if (GuiSlider((Rectangle){ 180, 210, 140, 20 }, "Gaussian Tempo Histogram Width", gaussian_tempo_histogram_width_str, &gaussian_tempo_histogram_width, 0.0, 10.0)) {
-            btt_set_gaussian_tempo_histogram_width(btt, gaussian_tempo_histogram_width);
+            btt_set_gaussian_tempo_histogram_width(analysys_args->btt, gaussian_tempo_histogram_width);
             snprintf(gaussian_tempo_histogram_width_str, 32, "%f", gaussian_tempo_histogram_width);
         }
 
         if (GuiSlider((Rectangle){ 180, 240, 140, 20 }, "Log Gaussian Tempo Weight Mean", log_gaussian_tempo_weight_mean_str, &log_gaussian_tempo_weight_mean, 0.0, 240.0)) {
-            btt_set_log_gaussian_tempo_weight_mean(btt, log_gaussian_tempo_weight_mean);
+            btt_set_log_gaussian_tempo_weight_mean(analysys_args->btt, log_gaussian_tempo_weight_mean);
             snprintf(log_gaussian_tempo_weight_mean_str, 32, "%f", log_gaussian_tempo_weight_mean);
         }
 
         if (GuiSlider((Rectangle){ 180, 270, 140, 20 }, "Log Gaussian Tempo Weight Width", log_gaussian_tempo_weight_width_str, &log_gaussian_tempo_weight_width, 0.0, 150.0)) {
-            btt_set_log_gaussian_tempo_weight_width(btt, log_gaussian_tempo_weight_width);
+            btt_set_log_gaussian_tempo_weight_width(analysys_args->btt, log_gaussian_tempo_weight_width);
             snprintf(log_gaussian_tempo_weight_width_str, 32, "%f", log_gaussian_tempo_weight_width);
         }
 
@@ -274,12 +288,12 @@ int main()
         stop_reading_flag = 1;
         pthread_join(analysys_thread, NULL);
     }
-    if (wav->is_open)
-        wave_close(wav);
+    if (analysys_args->wav->is_open)
+        wave_close(analysys_args->wav);
 
     soundio_device_unref(device);
     soundio_destroy(soundio);
-    btt_destroy(btt);
+    btt_destroy(analysys_args->btt);
     circular_buffer_free(cb);
 
     free(autocorr_exponent_str);
@@ -294,11 +308,9 @@ static void write_callback(struct SoundIoOutStream *outstream, int frame_count_m
     const struct SoundIoChannelLayout *layout = &outstream->layout;
     struct SoundIoChannelArea *areas;
     int frames_left = frame_count_max;
-    float *samples = args->samples;
-    unsigned long samples_read = args->samples_read;
     int err;
 
-    while (samples_read < args->num_samples && frames_left > 0 && !stop_reading_flag) {   
+    while (args->samples_read < args->num_samples && frames_left > 0 && !stop_reading_flag) {   
         int frame_count = frames_left;
         if ((err = soundio_outstream_begin_write(outstream, &areas, &frame_count))) {
             fprintf(stderr, "%s\n", soundio_strerror(err));
@@ -310,7 +322,7 @@ static void write_callback(struct SoundIoOutStream *outstream, int frame_count_m
         for (int frame = 0; frame < frame_count; frame++) {
             for (int channel = 0; channel < layout->channel_count; channel++) {
                 float *ptr = (float *)(areas[channel].ptr + areas[channel].step * frame);
-                *ptr = samples[samples_read++];
+                *ptr = args->samples[args->samples_read++];
             }
         }
         if ((err = soundio_outstream_end_write(outstream))) {
@@ -321,7 +333,6 @@ static void write_callback(struct SoundIoOutStream *outstream, int frame_count_m
         frames_left -= frame_count;
     }
 
-    args->samples_read = samples_read;
 }
 
 void *audio_thread_fn(void *arg) {
@@ -364,29 +375,27 @@ void *analysis_thread(void* arg) {
     unsigned int buffer_size = 4;
     dft_sample_t buffer[buffer_size];
     unsigned long samples_read = 0;
-    unsigned int num_samples = args->wav->num_samples;
+    unsigned long num_samples = args->wav->num_samples;
+    unsigned int num_channels = args->wav->header->channels;
 
     int sample_rate = args->wav->header->sample_rate; 
     struct timespec ts;
     ts.tv_sec = 0;
-    ts.tv_nsec = (long) (buffer_size * 1e9 / sample_rate); // Convert sample rate to nanoseconds
+    ts.tv_nsec = (long) (buffer_size * 1000000000 / sample_rate); // Convert sample rate to nanoseconds
 
     while (!stop_reading_flag && samples_read < num_samples) {
-        for (unsigned int i = 0; i < buffer_size - 1; i++) {
-            buffer[i] = args->wav->samples[samples_read++ * args->wav->header->channels];
+        for (unsigned int i = 0; i < buffer_size; i++) {
+            buffer[i] = args->wav->samples[samples_read++ * num_channels];
             circular_buffer_push(args->cb, buffer[i]);
         }
         
         btt_process(args->btt, buffer, buffer_size);
-        args->last_tempo = (float) btt_get_tempo_bpm(args->btt);
+        args->last_tempo = btt_get_tempo_bpm(args->btt);
 
         // wait, this lets the audio be analyzed at the same speed we would play it
         nanosleep(&ts, NULL);
     }
 
-    wave_close(args->wav);
-
-    samples_read = 0;
     stop_reading_flag = 0;
     analysys_thread_open = 1;
 
