@@ -22,8 +22,6 @@
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 pthread_t analysys_thread, audio_thread;
 
 int stop_reading_flag = 0;
@@ -127,15 +125,18 @@ int main()
         {
             if (IsFileExtension(fileDialogState.fileNameText, ".wav"))
             {
-                if (analysys_args->wav->is_open) {
+                if (!audio_thread_open) {
                     stop_reading_flag = 1;
-                    if (audio_args->no_audio_mode == false) {
-                        pthread_join(audio_thread, NULL);
-                    }
-                    
+                    pthread_join(audio_thread, NULL);
+                }
+                if (!analysys_thread_open) {
+                    stop_reading_flag = 1;
                     pthread_join(analysys_thread, NULL);
+                }
+                if (analysys_args->wav->is_open) {
                     wave_close(analysys_args->wav);
                 }
+                
                 strncpy(fileNameToLoad, (const char*) fileDialogState.dirPathText, 511);
                 strncat(fileNameToLoad, "/", sizeof(fileNameToLoad) - strlen(fileNameToLoad) - 1);
                 strncat(fileNameToLoad, (const char*) fileDialogState.fileNameText, 512 - strlen(fileNameToLoad));
@@ -211,6 +212,7 @@ int main()
             if (audio_args->no_audio_mode == false) {
                 pthread_join(analysys_thread, NULL);
             }
+            stop_reading_flag = 0;
             
             btt_destroy(analysys_args->btt);
             analysys_args->btt = btt_new_default();
@@ -236,6 +238,7 @@ int main()
                 stop_reading_flag = 1;
                 pthread_join(analysys_thread, NULL);
             }
+            stop_reading_flag = 0;
             if (!audio_args->no_audio_mode)
                 if ((audio_thread_open = pthread_create(&audio_thread, NULL, audio_thread_fn, audio_args) == 0)) {
                     fprintf(stderr, "Error creating audio thread\n");
@@ -288,6 +291,7 @@ int main()
         stop_reading_flag = 1;
         pthread_join(analysys_thread, NULL);
     }
+    stop_reading_flag = 0;
     if (analysys_args->wav->is_open)
         wave_close(analysys_args->wav);
 
@@ -310,7 +314,7 @@ static void write_callback(struct SoundIoOutStream *outstream, int frame_count_m
     int frames_left = frame_count_max;
     int err;
 
-    while (args->samples_read < args->num_samples && frames_left > 0 && !stop_reading_flag) {   
+    while (frames_left > 0 && args->samples_read < args->num_samples * 2) {   
         int frame_count = frames_left;
         if ((err = soundio_outstream_begin_write(outstream, &areas, &frame_count))) {
             fprintf(stderr, "%s\n", soundio_strerror(err));
@@ -331,8 +335,9 @@ static void write_callback(struct SoundIoOutStream *outstream, int frame_count_m
             return;
         }
         frames_left -= frame_count;
+        if (stop_reading_flag) soundio_outstream_pause(outstream, true);
     }
-
+    
 }
 
 void *audio_thread_fn(void *arg) {
@@ -359,7 +364,9 @@ void *audio_thread_fn(void *arg) {
         args->no_audio_mode = true;
         return NULL;
     }
-    while (!stop_reading_flag && args->samples_read < args->num_samples) {
+
+    unsigned long total_samples = args->num_samples * 2;
+    while (!stop_reading_flag && args->samples_read < total_samples) {
         soundio_wait_events(args->soundio);
     }
     soundio_outstream_destroy(outstream);
@@ -396,7 +403,6 @@ void *analysis_thread(void* arg) {
         nanosleep(&ts, NULL);
     }
 
-    stop_reading_flag = 0;
     analysys_thread_open = 1;
 
     return NULL;
