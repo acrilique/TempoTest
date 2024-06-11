@@ -6,10 +6,14 @@ To use it, first clone this repository (option --recurse-submodules is needed to
 
 `git clone --recurse-submodules https://github.com/acrilique/TempoTest.git`
 
-You will need to have raylib installed in your system. If you haven't done it already, go to TempoTest/lib/raylib and follow the instructions in the README.md file to build and install it.
+You will need to have raylib and soundio libraries installed in your system.
 
 After that, go to the TempoTest directory and run:
 ```
 make
 ./tester
 ```
+
+## Troubleshooting
+
+If you have problems building related to raugyi.h or gui_window_file_dialog.h files, it might be because the version of raylib that's installed in your system is different than mine. You might be able to look for those 2 files inside the raylib and raygui source directories of the version of raylib that you have installed.
