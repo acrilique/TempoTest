@@ -1,6 +1,6 @@
 # Tester for @michaelkrzyzaniak beat/tempo tracking library.
 
-In order to obtain the best parameters for different kinds of music, understand how the algorithms work and change them to obtain better results, I decided to make this simple app based on raylib.
+In order to obtain the best parameters for different kinds of music, understand how the algorithms work and change them to obtain better results, I decided to make this simple app.
 
 To use it, first clone this repository (option --recurse-submodules is needed to get the `Beat-and-Tempo-Tracking` dependency too):
 
