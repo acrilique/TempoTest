@@ -7,6 +7,7 @@ To use it, first clone this repository (option --recurse-submodules is needed to
 `git clone --recurse-submodules https://github.com/acrilique/TempoTest.git`
 
 To build this, you will need to install the GTK4 development libraries. If they're not installed, the `cmake ..` command will fail with an error message. To install them, use one of the following commands:
+
 Ubuntu:
 ```
 sudo apt install libgtk-4-dev
