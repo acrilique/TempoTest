@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "lib/Beat-and-Tempo-Tracking/BTT.h"
-#include "lib/Beat-and-Tempo-Tracking/src/DFT.h"
 #include "audio_queue.h"
 #include "circular_buffer.h"
 
@@ -15,35 +14,31 @@
 
 #define CIRCULAR_BUFFER_SIZE (44100 * 2)
 
-#define MAX_PARAMS 14
-
 typedef struct {
     const char* name;
-    void (*setter)(BTT*, double);
+    union {
+        void (*double_setter)(BTT*, double);
+        void (*int_setter)(BTT*, int);
+    } setter;
     int is_int;
 } Parameter;
 
-// Function to set integer parameters
-void set_int_param(BTT* btt, void (*setter)(BTT*, int), double value) {
-    setter(btt, (int)value);
-}
-
 // Define the parameter list
 Parameter params[] = {
-    {"use_amplitude_normalization", (void (*)(BTT*, double))btt_set_use_amplitude_normalization, 1},
-    {"spectral_compression_gamma", btt_set_spectral_compression_gamma, 0},
-    {"oss_filter_cutoff", btt_set_oss_filter_cutoff, 0},
-    {"onset_threshold", btt_set_onset_threshold, 0},
-    {"onset_threshold_min", btt_set_onset_threshold_min, 0},
-    {"noise_cancellation_threshold", btt_set_noise_cancellation_threshold, 0},
-    {"autocorrelation_exponent", btt_set_autocorrelation_exponent, 0},
-    {"min_tempo", btt_set_min_tempo, 0},
-    {"max_tempo", btt_set_max_tempo, 0},
-    {"num_tempo_candidates", (void (*)(BTT*, double))btt_set_num_tempo_candidates, 1},
-    {"gaussian_tempo_histogram_decay", btt_set_gaussian_tempo_histogram_decay, 0},
-    {"gaussian_tempo_histogram_width", btt_set_gaussian_tempo_histogram_width, 0},
-    {"log_gaussian_tempo_weight_mean", btt_set_log_gaussian_tempo_weight_mean, 0},
-    {"log_gaussian_tempo_weight_width", btt_set_log_gaussian_tempo_weight_width, 0}
+    {"use_amplitude_normalization", {.int_setter = btt_set_use_amplitude_normalization}, 1},
+    {"spectral_compression_gamma", {.double_setter = btt_set_spectral_compression_gamma}, 0},
+    {"oss_filter_cutoff", {.double_setter = btt_set_oss_filter_cutoff}, 0},
+    {"onset_threshold", {.double_setter = btt_set_onset_threshold}, 0},
+    {"onset_threshold_min", {.double_setter = btt_set_onset_threshold_min}, 0},
+    {"noise_cancellation_threshold", {.double_setter = btt_set_noise_cancellation_threshold}, 0},
+    {"autocorrelation_exponent", {.double_setter = btt_set_autocorrelation_exponent}, 0},
+    {"min_tempo", {.double_setter = btt_set_min_tempo}, 0},
+    {"max_tempo", {.double_setter = btt_set_max_tempo}, 0},
+    {"num_tempo_candidates", {.int_setter = btt_set_num_tempo_candidates}, 1},
+    {"gaussian_tempo_histogram_decay", {.double_setter = btt_set_gaussian_tempo_histogram_decay}, 0},
+    {"gaussian_tempo_histogram_width", {.double_setter = btt_set_gaussian_tempo_histogram_width}, 0},
+    {"log_gaussian_tempo_weight_mean", {.double_setter = btt_set_log_gaussian_tempo_weight_mean}, 0},
+    {"log_gaussian_tempo_weight_width", {.double_setter = btt_set_log_gaussian_tempo_weight_width}, 0}
 };
 
 void parse_parameters(BTT* btt, int argc, char* argv[]) {
@@ -56,12 +51,13 @@ void parse_parameters(BTT* btt, int argc, char* argv[]) {
                 value_str++;
                 double value = atof(value_str);
 
-                for (int j = 0; j < MAX_PARAMS; j++) {
+                int num_params = (int) sizeof(params) / sizeof(params[0]);
+                for (int j = 0; j < num_params; j++) {
                     if (strcmp(param, params[j].name) == 0) {
                         if (params[j].is_int) {
-                            set_int_param(btt, (void (*)(BTT*, int))params[j].setter, value);
+                            params[j].setter.int_setter(btt, (int)value);
                         } else {
-                            params[j].setter(btt, value);
+                            params[j].setter.double_setter(btt, value);
                         }
                         break;
                     }
@@ -97,7 +93,7 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
     ma_uint64 framesRead;
     ma_decoder_read_pcm_frames(pDecoder, output, frameCount, &framesRead);
 
-    for (int i = 0; i < framesRead; i++) {
+    for (int i = 0; i < (int) framesRead; i++) {
         writeToCircularBuffer(context->waveform_buffer, &output[i * pDecoder->outputChannels], 1);
     }
 
@@ -123,6 +119,7 @@ void* btt_processing_thread(void* arg) {
 }
 
 static void draw_waveform(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
+    (void) area;
     AudioContext* context = (AudioContext*)user_data;
 
     float data[CIRCULAR_BUFFER_SIZE];
@@ -193,6 +190,7 @@ static void activate(GtkApplication* app, gpointer user_data) {
 }
 
 static void shutdown(GtkApplication* app, gpointer user_data) {
+    (void) app;
     AudioContext* context = (AudioContext*)user_data;
 
     context->isPlaying = false;
