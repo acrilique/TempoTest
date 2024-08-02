@@ -1,409 +1,244 @@
-
+#include <gtk/gtk.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <pthread.h>
-#include <time.h>
-#include <soundio/soundio.h>
+#include <string.h>
 
 #include "lib/Beat-and-Tempo-Tracking/BTT.h"
+#include "lib/Beat-and-Tempo-Tracking/src/DFT.h"
 
-#include "wave.h"
+#define MINIAUDIO_IMPLEMENTATION
+#include "lib/miniaudio.h"
 
-#include "circular_buffer.h"
+#define CIRCULAR_BUFFER_SIZE (44100 * 2)
 
-#include "raylib.h"
+typedef struct {
+    float* buffer;
+    int head;
+    int tail;
+    int size;
+    pthread_mutex_t mutex;
+} CircularBuffer;
 
-#define RAYGUI_IMPLEMENTATION
-#include "lib/raygui.h"
+typedef struct {
+    ma_decoder* decoder;
+    CircularBuffer* waveform_buffer;
+    bool isPlaying;
+    float currentTempo;
+    GtkWidget* tempo_label;
+    GtkWidget* drawing_area;
+    BTT* btt;
+} AudioContext;
 
-#undef RAYGUI_IMPLEMENTATION
-#define GUI_WINDOW_FILE_DIALOG_IMPLEMENTATION
-#include "lib/gui_window_file_dialog.h"
-
-int nanosleep(const struct timespec *req, struct timespec *rem);
-
-pthread_t analysys_thread, audio_thread;
-
-int stop_reading_flag = 0;
-int audio_thread_open = 1; // 1 if closed, 0 if open
-int analysys_thread_open = 1; // 1 if closed, 0 if open
-
-struct AnalysysThreadArgs {
-    WAVE *wav;
-    struct CircularBuffer *cb;
-    BTT *btt;
-    float last_tempo;
-};
-
-struct AudioThreadArgs {
-    struct SoundIoDevice *device;
-    struct SoundIo *soundio;
-    float *samples;
-    int sample_rate;
-    unsigned long num_samples;
-    unsigned long samples_read;
-    bool no_audio_mode;
-};
-
-void *analysis_thread(void *arg); //takes struct AnalysysThreadArgs *args as argument
-
-void *audio_thread_fn(void *arg); //takes WAVE *wav as argument
-
-int max(int a, int b) {
-    return a > b ? a : b;
+CircularBuffer* createCircularBuffer(int size) {
+    CircularBuffer* cb = (CircularBuffer*)malloc(sizeof(CircularBuffer));
+    cb->buffer = (float*)calloc(size, sizeof(float));
+    cb->head = 0;
+    cb->tail = 0;
+    cb->size = size;
+    pthread_mutex_init(&cb->mutex, NULL);
+    return cb;
 }
 
-int main()
-{
-    struct AnalysysThreadArgs *analysys_args = malloc(sizeof(struct AnalysysThreadArgs));
-
-    analysys_args->wav = malloc(sizeof(WAVE));
-    wave_init(analysys_args->wav);
-    analysys_args->btt = btt_new_default();
-    CircularBuffer *cb = circular_buffer_new(16000);
-
-    analysys_args->cb = cb;
-    analysys_args->last_tempo = 0.0;
-
-    struct AudioThreadArgs *audio_args = malloc(sizeof(struct AudioThreadArgs));
-
-    struct SoundIo *soundio = soundio_create();
-    if (!soundio) {
-        fprintf(stderr, "Soundio: Out of memory\n");
-        audio_args->no_audio_mode = true;
-    }
-    if (soundio_connect(soundio)) {
-        fprintf(stderr, "Soundio: Unable to connect\n");
-        audio_args->no_audio_mode = true;
-    }
-    soundio_flush_events(soundio);
-    struct SoundIoDevice *device = soundio_get_output_device(soundio, soundio_default_output_device_index(soundio));
-    if (!device) {
-        fprintf(stderr, "Soundio: Unable to find output device\n");
-        audio_args->no_audio_mode = true;
-    }
-
-    audio_args->device = device;
-    audio_args->soundio = soundio;
-    audio_args->samples_read = 0;
-
-    char tempo_string[32];
-
-    btt_set_tracking_mode(analysys_args->btt, BTT_ONSET_AND_TEMPO_TRACKING);
-    btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, 0.999);
-
-    float autocorr_exponent = 0.5;
-    char *autocorr_exponent_str = malloc(32);
-    snprintf(autocorr_exponent_str, 32, "%f", autocorr_exponent);
-
-    float gaussian_tempo_histogram_decay = 0.999;
-    char *gaussian_tempo_histogram_decay_str = malloc(32);
-    snprintf(gaussian_tempo_histogram_decay_str, 32, "%f", gaussian_tempo_histogram_decay);
-
-    float gaussian_tempo_histogram_width = 5;
-    char *gaussian_tempo_histogram_width_str = malloc(32);
-    snprintf(gaussian_tempo_histogram_width_str, 32, "%f", gaussian_tempo_histogram_width);
-
-    float log_gaussian_tempo_weight_mean = 120;
-    char *log_gaussian_tempo_weight_mean_str = malloc(32);
-    snprintf(log_gaussian_tempo_weight_mean_str, 32, "%f", log_gaussian_tempo_weight_mean);
-
-    float log_gaussian_tempo_weight_width = 75;
-    char *log_gaussian_tempo_weight_width_str = malloc(32);
-    snprintf(log_gaussian_tempo_weight_width_str, 32, "%f", log_gaussian_tempo_weight_width);
-
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(800, 600, "BTT Test");
-
-    GuiWindowFileDialogState fileDialogState = InitGuiWindowFileDialog(GetWorkingDirectory());
-    char fileNameToLoad[512] = { 0 };
-
-    SetTargetFPS(60);
-    while(!WindowShouldClose()) {
-
-        if (fileDialogState.SelectFilePressed)
-        {
-            if (IsFileExtension(fileDialogState.fileNameText, ".wav"))
-            {
-                if (!audio_thread_open) {
-                    stop_reading_flag = 1;
-                    pthread_join(audio_thread, NULL);
-                }
-                if (!analysys_thread_open) {
-                    stop_reading_flag = 1;
-                    pthread_join(analysys_thread, NULL);
-                }
-                if (analysys_args->wav->is_open) {
-                    wave_close(analysys_args->wav);
-                }
-                
-                strncpy(fileNameToLoad, (const char*) fileDialogState.dirPathText, 511);
-                strncat(fileNameToLoad, "/", sizeof(fileNameToLoad) - strlen(fileNameToLoad) - 1);
-                strncat(fileNameToLoad, (const char*) fileDialogState.fileNameText, 512 - strlen(fileNameToLoad));
-                
-                wave_open(analysys_args->wav, (const char *) fileNameToLoad);
-                if (!audio_args->no_audio_mode) {
-                    if (soundio_device_supports_sample_rate(device, analysys_args->wav->header->sample_rate)) {
-                        audio_args->sample_rate = analysys_args->wav->header->sample_rate;
-                    } else {
-                        int nearest_sr = soundio_device_nearest_sample_rate(device, analysys_args->wav->header->sample_rate);
-                        wave_resample(analysys_args->wav, nearest_sr);
-                        audio_args->sample_rate = nearest_sr;
-                        analysys_args->btt = btt_destroy(analysys_args->btt);
-                        analysys_args->btt = btt_new(BTT_SUGGESTED_SPECTRAL_FLUX_STFT_LEN, 
-                                BTT_SUGGESTED_SPECTRAL_FLUX_STFT_OVERLAP, 
-                                BTT_SUGGESTED_OSS_FILTER_ORDER, BTT_SUGGESTED_OSS_LENGTH,
-                                BTT_SUGGESTED_CBSS_LENGTH, BTT_SUGGESTED_ONSET_THRESHOLD_N, 
-                                nearest_sr, 
-                                BTT_DEFAULT_ANALYSIS_LATENCY_ONSET_ADJUSTMENT, 
-                                BTT_DEFAULT_ANALYSIS_LATENCY_BEAT_ADJUSTMENT);
-                        btt_set_tracking_mode(analysys_args->btt, BTT_ONSET_AND_TEMPO_TRACKING);
-                        btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, gaussian_tempo_histogram_decay);
-                        btt_set_gaussian_tempo_histogram_width(analysys_args->btt, gaussian_tempo_histogram_width);
-                        btt_set_log_gaussian_tempo_weight_mean(analysys_args->btt, log_gaussian_tempo_weight_mean);
-                        btt_set_log_gaussian_tempo_weight_width(analysys_args->btt, log_gaussian_tempo_weight_width);
-                    }
-                    audio_args->samples = (float *) malloc(sizeof(float) * analysys_args->wav->num_samples * analysys_args->wav->header->channels);
-                    if (wave_copy_samples(analysys_args->wav, audio_args->samples)) {
-                        fprintf(stderr, "Error copying the samples for the audio thread\n");
-                        audio_args->no_audio_mode = true;
-                    }
-                    audio_args->num_samples = analysys_args->wav->num_samples;
-                    if ((audio_thread_open = pthread_create(&audio_thread, NULL, audio_thread_fn, audio_args)) != 0) {
-                        fprintf(stderr, "Error creating audio thread\n");
-                        audio_args->no_audio_mode = true;
-                    }
-                }
-                if ((analysys_thread_open = pthread_create(&analysys_thread, NULL, analysis_thread, analysys_args)) != 0) {
-                    fprintf(stderr, "Error creating analysis thread\n");
-                    return 1;
-                }
-            }
-
-            fileDialogState.SelectFilePressed = false;
-        }
-
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
-
-        if (fileDialogState.windowActive) GuiLock();
-
-        if (cb->head > 0 || cb->tail > 0) {
-            int step = max(1, (int) cb->size / GetScreenWidth());
-            int x = 0;
-            for (int i = 0; i < GetScreenWidth(); i++) {
-                int index = (i * step) % cb->size;
-                DrawLine(x, GetScreenHeight() / 8 - cb->buffer[index] * GetScreenHeight() / 8, x + 1, GetScreenHeight() / 8 - cb->buffer[index + step - 1] * GetScreenHeight() / 8, RED);
-                x++;
-            }
-        }
-        int ret = snprintf(tempo_string, 32, "%f", analysys_args->last_tempo);
-        if (ret < 0 || ret >= 32) {
-            DrawText("ERROR", GetScreenWidth() / 4, 2 * GetScreenHeight() / 3, GetScreenWidth() / 10, RED);
-        }
-        else 
-            DrawText((const char *) tempo_string, GetScreenWidth() / 4, 2 * GetScreenHeight() / 3, GetScreenWidth() / 10, GREEN);
-
-        if (GuiButton((Rectangle){ 0, 0, 140, 30 }, GuiIconText(ICON_FILE_OPEN, "Open Wave File"))) fileDialogState.windowActive = true;
-
-        if (GuiButton((Rectangle){ 140, 0, 140, 30 }, "Restart (flush)")) {
-            stop_reading_flag = 1;
-            pthread_join(audio_thread, NULL);
-            if (audio_args->no_audio_mode == false) {
-                pthread_join(analysys_thread, NULL);
-            }
-            stop_reading_flag = 0;
-            
-            btt_destroy(analysys_args->btt);
-            analysys_args->btt = btt_new_default();
-            btt_set_tracking_mode(analysys_args->btt, BTT_ONSET_AND_TEMPO_TRACKING);
-            btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, gaussian_tempo_histogram_decay);
-            btt_set_gaussian_tempo_histogram_width(analysys_args->btt, gaussian_tempo_histogram_width);
-            btt_set_log_gaussian_tempo_weight_mean(analysys_args->btt, log_gaussian_tempo_weight_mean);
-            btt_set_log_gaussian_tempo_weight_width(analysys_args->btt, log_gaussian_tempo_weight_width);
-            if (analysys_args->wav->is_open) {
-                wave_close(analysys_args->wav);
-            }            
-            wave_open(analysys_args->wav, (const char *) fileNameToLoad);
-            circular_buffer_flush(cb);
-            
-        }
-
-        if (GuiButton((Rectangle){ 280, 0, 140, 30 }, "Restart")) {
-            if (audio_thread_open == 0) {
-                stop_reading_flag = 1;
-                pthread_join(audio_thread, NULL);
-            }
-            if (analysys_thread_open == 0) {
-                stop_reading_flag = 1;
-                pthread_join(analysys_thread, NULL);
-            }
-            stop_reading_flag = 0;
-            if (!audio_args->no_audio_mode)
-                if ((audio_thread_open = pthread_create(&audio_thread, NULL, audio_thread_fn, audio_args) == 0)) {
-                    fprintf(stderr, "Error creating audio thread\n");
-                    audio_args->no_audio_mode = true;
-                }
-            if ((analysys_thread_open = pthread_create(&analysys_thread, NULL, analysis_thread, analysys_args)) == 0) {
-                fprintf(stderr, "Error creating analysis thread\n");
-                return 1;
-            }
-        }
-        
-        if (GuiSlider((Rectangle){ 180, 150, 140, 20 }, "Autocorrelation Exponent", autocorr_exponent_str, &autocorr_exponent, 0.1, 2.0)) {
-            btt_set_autocorrelation_exponent(analysys_args->btt, autocorr_exponent);
-            snprintf(autocorr_exponent_str, 32, "%f", autocorr_exponent);
-        }
-
-        if (GuiSlider((Rectangle){ 180, 180, 140, 20 }, "Gaussian Tempo Histogram Decay", gaussian_tempo_histogram_decay_str, &gaussian_tempo_histogram_decay, 0.6, 1.0)) {
-            btt_set_gaussian_tempo_histogram_decay(analysys_args->btt, gaussian_tempo_histogram_decay);
-            snprintf(gaussian_tempo_histogram_decay_str, 32, "%f", gaussian_tempo_histogram_decay);
-        }
-
-        if (GuiSlider((Rectangle){ 180, 210, 140, 20 }, "Gaussian Tempo Histogram Width", gaussian_tempo_histogram_width_str, &gaussian_tempo_histogram_width, 0.0, 10.0)) {
-            btt_set_gaussian_tempo_histogram_width(analysys_args->btt, gaussian_tempo_histogram_width);
-            snprintf(gaussian_tempo_histogram_width_str, 32, "%f", gaussian_tempo_histogram_width);
-        }
-
-        if (GuiSlider((Rectangle){ 180, 240, 140, 20 }, "Log Gaussian Tempo Weight Mean", log_gaussian_tempo_weight_mean_str, &log_gaussian_tempo_weight_mean, 0.0, 240.0)) {
-            btt_set_log_gaussian_tempo_weight_mean(analysys_args->btt, log_gaussian_tempo_weight_mean);
-            snprintf(log_gaussian_tempo_weight_mean_str, 32, "%f", log_gaussian_tempo_weight_mean);
-        }
-
-        if (GuiSlider((Rectangle){ 180, 270, 140, 20 }, "Log Gaussian Tempo Weight Width", log_gaussian_tempo_weight_width_str, &log_gaussian_tempo_weight_width, 0.0, 150.0)) {
-            btt_set_log_gaussian_tempo_weight_width(analysys_args->btt, log_gaussian_tempo_weight_width);
-            snprintf(log_gaussian_tempo_weight_width_str, 32, "%f", log_gaussian_tempo_weight_width);
-        }
-
-        GuiUnlock();
-
-        GuiWindowFileDialog(&fileDialogState);
-
-        EndDrawing();
-    }
-
-    
-    if (!audio_thread_open) {
-        stop_reading_flag = 1;
-        pthread_join(audio_thread, NULL);
-    }
-    if (!analysys_thread_open) {
-        stop_reading_flag = 1;
-        pthread_join(analysys_thread, NULL);
-    }
-    stop_reading_flag = 0;
-    if (analysys_args->wav->is_open)
-        wave_close(analysys_args->wav);
-
-    soundio_device_unref(device);
-    soundio_destroy(soundio);
-    btt_destroy(analysys_args->btt);
-    circular_buffer_free(cb);
-
-    free(autocorr_exponent_str);
-
-    CloseWindow();
-    return 0;
+void destroyCircularBuffer(CircularBuffer* cb) {
+    pthread_mutex_destroy(&cb->mutex);
+    free(cb->buffer);
+    free(cb);
 }
 
-static void write_callback(struct SoundIoOutStream *outstream, int frame_count_min, int frame_count_max)
-{
-    struct AudioThreadArgs *args = (struct AudioThreadArgs *) outstream->userdata;
-    const struct SoundIoChannelLayout *layout = &outstream->layout;
-    struct SoundIoChannelArea *areas;
-    int frames_left = frame_count_max;
-    int err;
-
-    while (frames_left > 0 && args->samples_read < args->num_samples * 2) {   
-        int frame_count = frames_left;
-        if ((err = soundio_outstream_begin_write(outstream, &areas, &frame_count))) {
-            fprintf(stderr, "%s\n", soundio_strerror(err));
-            args->no_audio_mode = true;
-            return;
+void writeToCircularBuffer(CircularBuffer* cb, float* data, int count) {
+    pthread_mutex_lock(&cb->mutex);
+    for (int i = 0; i < count; i++) {
+        cb->buffer[cb->head] = data[i];
+        cb->head = (cb->head + 1) % cb->size;
+        if (cb->head == cb->tail) {
+            cb->tail = (cb->tail + 1) % cb->size;
         }
-        if (!frame_count)
-            break;
-        for (int frame = 0; frame < frame_count; frame++) {
-            for (int channel = 0; channel < layout->channel_count; channel++) {
-                float *ptr = (float *)(areas[channel].ptr + areas[channel].step * frame);
-                *ptr = args->samples[args->samples_read++];
-            }
-        }
-        if ((err = soundio_outstream_end_write(outstream))) {
-            fprintf(stderr, "%s\n", soundio_strerror(err));
-            args->no_audio_mode = true;
-            return;
-        }
-        frames_left -= frame_count;
-        if (stop_reading_flag) soundio_outstream_pause(outstream, true);
     }
-    
+    pthread_mutex_unlock(&cb->mutex);
 }
 
-void *audio_thread_fn(void *arg) {
-    struct AudioThreadArgs *args = (struct AudioThreadArgs *) arg;
-    int err;
-    struct SoundIoOutStream *outstream = soundio_outstream_create(args->device);
-    if (!outstream) {
-        fprintf(stderr, "Soundio: Out of memory\n");
-        args->no_audio_mode = true;
-        return NULL;
-    }
-    outstream->format = SoundIoFormatFloat32NE;
-    outstream->write_callback = write_callback;
-    outstream->userdata = args;
-    outstream->sample_rate = args->sample_rate;
+int readFromCircularBuffer(CircularBuffer* cb, float* data, int count) {
+    pthread_mutex_lock(&cb->mutex);
+    int available = (cb->head - cb->tail + cb->size) % cb->size;
+    int toRead = (count < available) ? count : available;
 
-    if ((err = soundio_outstream_open(outstream))) {
-        fprintf(stderr, "%s\n", soundio_strerror(err));
-        args->no_audio_mode = true;
-        return NULL;
+    int readIndex = (cb->head - toRead + cb->size) % cb->size;
+    for (int i = 0; i < toRead; i++) {
+        data[i] = cb->buffer[readIndex];
+        readIndex = (readIndex + 1) % cb->size;
     }
-    if ((err = soundio_outstream_start(outstream))) {
-        fprintf(stderr, "%s\n", soundio_strerror(err));
-        args->no_audio_mode = true;
-        return NULL;
-    }
+    pthread_mutex_unlock(&cb->mutex);
 
-    unsigned long total_samples = args->num_samples * 2;
-    while (!stop_reading_flag && args->samples_read < total_samples) {
-        soundio_wait_events(args->soundio);
-    }
-    soundio_outstream_destroy(outstream);
-    free(args->samples);
-    audio_thread_open = 1;
-    args->samples_read = 0;
-    return NULL;
+    return toRead;
 }
 
-void *analysis_thread(void* arg) {
+int getAvailableData(CircularBuffer* cb) {
+    pthread_mutex_lock(&cb->mutex);
+    int available = (cb->head - cb->tail + cb->size) % cb->size;
+    pthread_mutex_unlock(&cb->mutex);
+    return available;
+}
 
-    struct AnalysysThreadArgs *args = (struct AnalysysThreadArgs *) arg;
-    unsigned int buffer_size = 4;
-    dft_sample_t buffer[buffer_size];
-    unsigned long samples_read = 0;
-    unsigned long num_samples = args->wav->num_samples;
-    unsigned int num_channels = args->wav->header->channels;
+void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    AudioContext* context = (AudioContext*)pDevice->pUserData;
+    ma_decoder* pDecoder = context->decoder;
 
-    int sample_rate = args->wav->header->sample_rate; 
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = (long) (buffer_size * 1000000000 / sample_rate); // Convert sample rate to nanoseconds
-
-    while (!stop_reading_flag && samples_read < num_samples) {
-        for (unsigned int i = 0; i < buffer_size; i++) {
-            buffer[i] = args->wav->samples[samples_read++ * num_channels];
-            circular_buffer_push(args->cb, buffer[i]);
-        }
-        
-        btt_process(args->btt, buffer, buffer_size);
-        args->last_tempo = btt_get_tempo_bpm(args->btt);
-
-        // wait, this lets the audio be analyzed at the same speed we would play it
-        nanosleep(&ts, NULL);
+    if (pDecoder == NULL) {
+        return;
     }
 
-    analysys_thread_open = 1;
+    float* output = (float*)pOutput;
+    ma_uint64 framesRead;
+    ma_decoder_read_pcm_frames(pDecoder, output, frameCount, &framesRead);
+    float* buffer[framesRead];
 
-    return NULL;
+    for (int i = 0; i < framesRead; i++) {
+        // Assume interleaved samples. We only want the first channel written to the buffers.
+        writeToCircularBuffer(context->waveform_buffer, &output[i * pDecoder->outputChannels], 1);
+        buffer[i] = &output[i * pDecoder->outputChannels];
+    }
+
+    btt_process(context->btt, output, framesRead);
+    double new_tempo = btt_get_tempo_bpm(context->btt);
+    if (new_tempo != context->currentTempo)
+        context->currentTempo = new_tempo;
+
+    (void)pInput;
+}
+
+static void draw_waveform(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
+    AudioContext* context = (AudioContext*)user_data;
+
+    float data[CIRCULAR_BUFFER_SIZE];
+    int count = readFromCircularBuffer(context->waveform_buffer, data, CIRCULAR_BUFFER_SIZE);
+
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_paint(cr);
+
+    cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
+    cairo_set_line_width(cr, 1.0);
+
+    int step = count / width;
+    if (step < 1) step = 1;
+
+    cairo_move_to(cr, 0, height / 2);
+
+    for (int i = 0; i < width; i++) {
+        int index = (i * step) % count;
+        float sample = data[index];
+        cairo_line_to(cr, i, height / 2 - sample * height / 2);
+    }
+
+    cairo_stroke(cr);
+
+}
+
+static gboolean update_ui(gpointer user_data) {
+    AudioContext* context = (AudioContext*)user_data;
+    char tempo_text[32];
+    snprintf(tempo_text, sizeof(tempo_text), "Tempo: %.1f BPM", context->currentTempo);
+    gtk_label_set_text(GTK_LABEL(context->tempo_label), tempo_text);
+    gtk_widget_queue_draw(context->drawing_area);
+    return G_SOURCE_CONTINUE;
+}
+
+static void activate(GtkApplication* app, gpointer user_data) {
+    AudioContext* context = (AudioContext*)user_data;
+    GtkWidget *window, *grid, *tempo_label, *drawing_area;
+
+    window = gtk_application_window_new(app);
+    gtk_window_set_title(GTK_WINDOW(window), "Waveform");
+    gtk_window_set_default_size(GTK_WINDOW(window), 300, 150);  // Set initial size, but allow resizing
+
+    grid = gtk_grid_new();
+    gtk_window_set_child(GTK_WINDOW(window), grid);
+
+    tempo_label = gtk_label_new("Tempo: 0 BPM");
+    gtk_grid_attach(GTK_GRID(grid), tempo_label, 0, 0, 1, 1);
+
+    drawing_area = gtk_drawing_area_new();
+    gtk_widget_set_vexpand(drawing_area, TRUE);
+    gtk_widget_set_hexpand(drawing_area, TRUE);
+    gtk_grid_attach(GTK_GRID(grid), drawing_area, 0, 1, 1, 1);
+
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawing_area),
+                                   (GtkDrawingAreaDrawFunc)draw_waveform,
+                                   context, NULL);
+
+    context->tempo_label = tempo_label;
+    context->drawing_area = drawing_area;
+
+    g_timeout_add(100, update_ui, context);
+
+    gtk_window_present(GTK_WINDOW(window));
+}
+
+int main(int argc, char** argv) {
+    ma_result result;
+    ma_decoder decoder;
+    ma_device_config deviceConfig;
+    ma_device device;
+    ma_decoder_config decoderConfig;
+
+    AudioContext context;
+
+    pthread_t processingThreadId;
+
+    if (argc < 2) {
+        printf("Usage: %s <audio_file>\n", argv[0]);
+        return -1;
+    }
+
+    decoderConfig = ma_decoder_config_init(ma_format_f32, 2, 44100);
+
+    result = ma_decoder_init_file(argv[1], &decoderConfig, &decoder);
+    if (result != MA_SUCCESS) {
+        printf("Could not load file: %s\n", argv[1]);
+        return -2;
+    }
+
+    context.decoder = &decoder;
+    context.waveform_buffer = createCircularBuffer(CIRCULAR_BUFFER_SIZE);
+    context.isPlaying = true;
+    context.currentTempo = 0;
+
+    deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format = decoder.outputFormat;
+    deviceConfig.playback.channels = decoder.outputChannels;
+    deviceConfig.sampleRate = decoder.outputSampleRate;
+    deviceConfig.dataCallback = data_callback;
+    deviceConfig.pUserData = &context;
+
+    context.btt = btt_new_default();
+
+    if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
+        printf("Failed to open playback device.\n");
+        ma_decoder_uninit(&decoder);
+        return -3;
+    }
+
+    if (ma_device_start(&device) != MA_SUCCESS) {
+        printf("Failed to start playback device.\n");
+        ma_device_uninit(&device);
+        ma_decoder_uninit(&decoder);
+        return -4;
+    }
+
+    GtkApplication *app;
+    int status;
+
+    app = gtk_application_new("com.example.GtkApplication", G_APPLICATION_NON_UNIQUE);
+    g_signal_connect(app, "activate", G_CALLBACK(activate), &context);
+    status = g_application_run(G_APPLICATION(app), 1, argv);
+    g_object_unref(app);
+
+    context.isPlaying = false;
+
+    ma_device_uninit(&device);
+    ma_decoder_uninit(&decoder);
+    destroyCircularBuffer(context.waveform_buffer);
+
+    return status;
 }
