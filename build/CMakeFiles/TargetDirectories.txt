@@ -1,3 +1,0 @@
-/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles/Tester.dir
-/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles/edit_cache.dir
-/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles/rebuild_cache.dir
