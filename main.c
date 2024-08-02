@@ -17,8 +17,6 @@
 
 #define MAX_PARAMS 14
 
-#define MAX_PARAMS 14 // Number of available parameters
-
 typedef struct {
     const char* name;
     void (*setter)(BTT*, double);
