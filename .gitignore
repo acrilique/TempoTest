@@ -11,6 +11,7 @@ lib/Beat-and-Tempo-Tracking/src/*.o
 Makefile~
 tester
 build/*
+build/
 /.zed/
 testfile.flac
 testfile2.flac
