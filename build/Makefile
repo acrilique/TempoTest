@@ -129,6 +129,54 @@ Tester/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/build
 .PHONY : Tester/fast
 
+audio_queue.o: audio_queue.c.o
+.PHONY : audio_queue.o
+
+# target to build an object file
+audio_queue.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/audio_queue.c.o
+.PHONY : audio_queue.c.o
+
+audio_queue.i: audio_queue.c.i
+.PHONY : audio_queue.i
+
+# target to preprocess a source file
+audio_queue.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/audio_queue.c.i
+.PHONY : audio_queue.c.i
+
+audio_queue.s: audio_queue.c.s
+.PHONY : audio_queue.s
+
+# target to generate assembly for a file
+audio_queue.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/audio_queue.c.s
+.PHONY : audio_queue.c.s
+
+circular_buffer.o: circular_buffer.c.o
+.PHONY : circular_buffer.o
+
+# target to build an object file
+circular_buffer.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/circular_buffer.c.o
+.PHONY : circular_buffer.c.o
+
+circular_buffer.i: circular_buffer.c.i
+.PHONY : circular_buffer.i
+
+# target to preprocess a source file
+circular_buffer.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/circular_buffer.c.i
+.PHONY : circular_buffer.c.i
+
+circular_buffer.s: circular_buffer.c.s
+.PHONY : circular_buffer.s
+
+# target to generate assembly for a file
+circular_buffer.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Tester.dir/build.make CMakeFiles/Tester.dir/circular_buffer.c.s
+.PHONY : circular_buffer.c.s
+
 lib/Beat-and-Tempo-Tracking/src/BTT.o: lib/Beat-and-Tempo-Tracking/src/BTT.c.o
 .PHONY : lib/Beat-and-Tempo-Tracking/src/BTT.o
 
@@ -306,6 +354,12 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... Tester"
+	@echo "... audio_queue.o"
+	@echo "... audio_queue.i"
+	@echo "... audio_queue.s"
+	@echo "... circular_buffer.o"
+	@echo "... circular_buffer.i"
+	@echo "... circular_buffer.s"
 	@echo "... lib/Beat-and-Tempo-Tracking/src/BTT.o"
 	@echo "... lib/Beat-and-Tempo-Tracking/src/BTT.i"
 	@echo "... lib/Beat-and-Tempo-Tracking/src/BTT.s"

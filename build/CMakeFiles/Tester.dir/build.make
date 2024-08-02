@@ -167,6 +167,34 @@ CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Statistics.c.s: cmake_forc
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Statistics.c.s"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/src/Statistics.c -o CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Statistics.c.s
 
+CMakeFiles/Tester.dir/audio_queue.c.o: CMakeFiles/Tester.dir/flags.make
+CMakeFiles/Tester.dir/audio_queue.c.o: /home/llucsm/dev/cpp/TempoTest/audio_queue.c
+CMakeFiles/Tester.dir/audio_queue.c.o: CMakeFiles/Tester.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building C object CMakeFiles/Tester.dir/audio_queue.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/Tester.dir/audio_queue.c.o -MF CMakeFiles/Tester.dir/audio_queue.c.o.d -o CMakeFiles/Tester.dir/audio_queue.c.o -c /home/llucsm/dev/cpp/TempoTest/audio_queue.c
+
+CMakeFiles/Tester.dir/audio_queue.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/Tester.dir/audio_queue.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/llucsm/dev/cpp/TempoTest/audio_queue.c > CMakeFiles/Tester.dir/audio_queue.c.i
+
+CMakeFiles/Tester.dir/audio_queue.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/Tester.dir/audio_queue.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/llucsm/dev/cpp/TempoTest/audio_queue.c -o CMakeFiles/Tester.dir/audio_queue.c.s
+
+CMakeFiles/Tester.dir/circular_buffer.c.o: CMakeFiles/Tester.dir/flags.make
+CMakeFiles/Tester.dir/circular_buffer.c.o: /home/llucsm/dev/cpp/TempoTest/circular_buffer.c
+CMakeFiles/Tester.dir/circular_buffer.c.o: CMakeFiles/Tester.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/Tester.dir/circular_buffer.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/Tester.dir/circular_buffer.c.o -MF CMakeFiles/Tester.dir/circular_buffer.c.o.d -o CMakeFiles/Tester.dir/circular_buffer.c.o -c /home/llucsm/dev/cpp/TempoTest/circular_buffer.c
+
+CMakeFiles/Tester.dir/circular_buffer.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/Tester.dir/circular_buffer.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/llucsm/dev/cpp/TempoTest/circular_buffer.c > CMakeFiles/Tester.dir/circular_buffer.c.i
+
+CMakeFiles/Tester.dir/circular_buffer.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/Tester.dir/circular_buffer.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/llucsm/dev/cpp/TempoTest/circular_buffer.c -o CMakeFiles/Tester.dir/circular_buffer.c.s
+
 # Object files for target Tester
 Tester_OBJECTS = \
 "CMakeFiles/Tester.dir/main.c.o" \
@@ -175,7 +203,9 @@ Tester_OBJECTS = \
 "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/DFT.c.o" \
 "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/fastsin.c.o" \
 "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Filter.c.o" \
-"CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Statistics.c.o"
+"CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Statistics.c.o" \
+"CMakeFiles/Tester.dir/audio_queue.c.o" \
+"CMakeFiles/Tester.dir/circular_buffer.c.o"
 
 # External object files for target Tester
 Tester_EXTERNAL_OBJECTS =
@@ -187,6 +217,8 @@ Tester: CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/DFT.c.o
 Tester: CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/fastsin.c.o
 Tester: CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Filter.c.o
 Tester: CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Statistics.c.o
+Tester: CMakeFiles/Tester.dir/audio_queue.c.o
+Tester: CMakeFiles/Tester.dir/circular_buffer.c.o
 Tester: CMakeFiles/Tester.dir/build.make
 Tester: /usr/lib64/libgtk-4.so
 Tester: /usr/lib64/libpangocairo-1.0.so
@@ -201,7 +233,7 @@ Tester: /usr/lib64/libgio-2.0.so
 Tester: /usr/lib64/libgobject-2.0.so
 Tester: /usr/lib64/libglib-2.0.so
 Tester: CMakeFiles/Tester.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Linking C executable Tester"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/llucsm/dev/cpp/TempoTest/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Linking C executable Tester"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/Tester.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

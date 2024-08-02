@@ -8,6 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/home/llucsm/dev/cpp/TempoTest/audio_queue.c" "CMakeFiles/Tester.dir/audio_queue.c.o" "gcc" "CMakeFiles/Tester.dir/audio_queue.c.o.d"
+  "/home/llucsm/dev/cpp/TempoTest/circular_buffer.c" "CMakeFiles/Tester.dir/circular_buffer.c.o" "gcc" "CMakeFiles/Tester.dir/circular_buffer.c.o.d"
   "/home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/src/BTT.c" "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/BTT.c.o" "gcc" "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/BTT.c.o.d"
   "/home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/src/DFT.c" "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/DFT.c.o" "gcc" "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/DFT.c.o.d"
   "/home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/src/Filter.c" "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Filter.c.o" "gcc" "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/Filter.c.o.d"

@@ -27,6 +27,8 @@ set(SOURCES
     lib/Beat-and-Tempo-Tracking/src/fastsin.c
     lib/Beat-and-Tempo-Tracking/src/Filter.c
     lib/Beat-and-Tempo-Tracking/src/Statistics.c
+    audio_queue.c
+    circular_buffer.c
 )
 
 # Add the source files to the executable

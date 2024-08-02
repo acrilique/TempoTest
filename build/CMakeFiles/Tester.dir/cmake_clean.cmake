@@ -1,4 +1,8 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/Tester.dir/audio_queue.c.o"
+  "CMakeFiles/Tester.dir/audio_queue.c.o.d"
+  "CMakeFiles/Tester.dir/circular_buffer.c.o"
+  "CMakeFiles/Tester.dir/circular_buffer.c.o.d"
   "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/BTT.c.o"
   "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/BTT.c.o.d"
   "CMakeFiles/Tester.dir/lib/Beat-and-Tempo-Tracking/src/DFT.c.o"

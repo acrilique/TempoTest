@@ -752,6 +752,8 @@ CMakeFiles/Tester.dir/main.c.o: /home/llucsm/dev/cpp/TempoTest/main.c \
  /home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/BTT.h \
  /home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/src/DFT.h \
  /home/llucsm/dev/cpp/TempoTest/lib/Beat-and-Tempo-Tracking/src/DFT.h \
+ /home/llucsm/dev/cpp/TempoTest/audio_queue.h \
+ /home/llucsm/dev/cpp/TempoTest/circular_buffer.h \
  /home/llucsm/dev/cpp/TempoTest/lib/miniaudio.h \
  /usr/lib64/gcc/x86_64-suse-linux/13/include/stdalign.h \
  /usr/include/assert.h /usr/include/wchar.h \
