@@ -14,6 +14,20 @@
 #define CIRCULAR_BUFFER_SIZE (44100 * 2)
 
 typedef struct {
+    float* data;
+    size_t frameCount;
+} AudioFrame;
+
+typedef struct {
+    AudioFrame* frames;
+    int head;
+    int tail;
+    int capacity;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} AudioQueue;
+
+typedef struct {
     float* buffer;
     int head;
     int tail;
@@ -29,7 +43,68 @@ typedef struct {
     GtkWidget* tempo_label;
     GtkWidget* drawing_area;
     BTT* btt;
+    AudioQueue* btt_queue;
+    pthread_t btt_thread;
+    bool btt_thread_running;
 } AudioContext;
+
+AudioQueue* createAudioQueue(int capacity) {
+    AudioQueue* queue = (AudioQueue*)malloc(sizeof(AudioQueue));
+    queue->frames = (AudioFrame*)calloc(capacity, sizeof(AudioFrame));
+    queue->head = queue->tail = 0;
+    queue->capacity = capacity;
+    pthread_mutex_init(&queue->mutex, NULL);
+    pthread_cond_init(&queue->cond, NULL);
+    return queue;
+}
+
+void destroyAudioQueue(AudioQueue* queue) {
+    pthread_mutex_destroy(&queue->mutex);
+    pthread_cond_destroy(&queue->cond);
+    for (int i = 0; i < queue->capacity; i++) {
+        free(queue->frames[i].data);
+    }
+    free(queue->frames);
+    free(queue);
+}
+
+void enqueueAudioFrame(AudioQueue* queue, float* data, size_t frameCount) {
+    pthread_mutex_lock(&queue->mutex);
+
+    int next = (queue->tail + 1) % queue->capacity;
+    if (next == queue->head) {
+        // Queue is full, wait for space
+        while (next == queue->head) {
+            pthread_cond_wait(&queue->cond, &queue->mutex);
+            next = (queue->tail + 1) % queue->capacity;
+        }
+    }
+
+    queue->frames[queue->tail].data = malloc(frameCount * sizeof(float));
+    memcpy(queue->frames[queue->tail].data, data, frameCount * sizeof(float));
+    queue->frames[queue->tail].frameCount = frameCount;
+
+    queue->tail = next;
+
+    pthread_cond_signal(&queue->cond);
+    pthread_mutex_unlock(&queue->mutex);
+}
+
+AudioFrame dequeueAudioFrame(AudioQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+
+    while (queue->head == queue->tail) {
+        pthread_cond_wait(&queue->cond, &queue->mutex);
+    }
+
+    AudioFrame frame = queue->frames[queue->head];
+    queue->head = (queue->head + 1) % queue->capacity;
+
+    pthread_cond_signal(&queue->cond);
+    pthread_mutex_unlock(&queue->mutex);
+
+    return frame;
+}
 
 CircularBuffer* createCircularBuffer(int size) {
     CircularBuffer* cb = (CircularBuffer*)malloc(sizeof(CircularBuffer));
@@ -92,20 +167,29 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
     float* output = (float*)pOutput;
     ma_uint64 framesRead;
     ma_decoder_read_pcm_frames(pDecoder, output, frameCount, &framesRead);
-    float* buffer[framesRead];
 
     for (int i = 0; i < framesRead; i++) {
-        // Assume interleaved samples. We only want the first channel written to the buffers.
         writeToCircularBuffer(context->waveform_buffer, &output[i * pDecoder->outputChannels], 1);
-        buffer[i] = &output[i * pDecoder->outputChannels];
     }
 
-    btt_process(context->btt, output, framesRead);
-    double new_tempo = btt_get_tempo_bpm(context->btt);
-    if (new_tempo != context->currentTempo)
-        context->currentTempo = new_tempo;
+    enqueueAudioFrame(context->btt_queue, output, framesRead);
 
     (void)pInput;
+}
+
+void* btt_processing_thread(void* arg) {
+    AudioContext* context = (AudioContext*)arg;
+
+    while (context->btt_thread_running) {
+        AudioFrame frame = dequeueAudioFrame(context->btt_queue);
+        btt_process(context->btt, frame.data, frame.frameCount);
+        double new_tempo = btt_get_tempo_bpm(context->btt);
+        if (new_tempo != context->currentTempo)
+            context->currentTempo = new_tempo;
+        free(frame.data);
+    }
+
+    return NULL;
 }
 
 static void draw_waveform(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
@@ -212,6 +296,16 @@ int main(int argc, char** argv) {
     deviceConfig.pUserData = &context;
 
     context.btt = btt_new_default();
+    context.btt_queue = createAudioQueue(100);  // Adjust capacity as needed
+    context.btt_thread_running = true;
+
+    if (pthread_create(&context.btt_thread, NULL, btt_processing_thread, &context) != 0) {
+        printf("Failed to create BTT processing thread.\n");
+        ma_decoder_uninit(&decoder);
+        destroyCircularBuffer(context.waveform_buffer);
+        destroyAudioQueue(context.btt_queue);
+        return -3;
+    }
 
     if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
         printf("Failed to open playback device.\n");
@@ -235,10 +329,13 @@ int main(int argc, char** argv) {
     g_object_unref(app);
 
     context.isPlaying = false;
+    context.btt_thread_running = false;
+    pthread_join(context.btt_thread, NULL);
 
     ma_device_uninit(&device);
     ma_decoder_uninit(&decoder);
     destroyCircularBuffer(context.waveform_buffer);
+    destroyAudioQueue(context.btt_queue);
 
     return status;
 }
