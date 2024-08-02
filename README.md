@@ -1,19 +1,30 @@
 # Tester for @michaelkrzyzaniak beat/tempo tracking library.
 
-In order to obtain the best parameters for different kinds of music, understand how the algorithms work and change them to obtain better results, I decided to make this simple app based on raylib. 
+In order to obtain the best parameters for different kinds of music, understand how the algorithms work and change them to obtain better results, I decided to make this simple app based on raylib.
 
-To use it, first clone this repository (option --recurse-submodules is needed to get the dependencies too):
+To use it, first clone this repository (option --recurse-submodules is needed to get the `Beat-and-Tempo-Tracking` dependency too):
 
 `git clone --recurse-submodules https://github.com/acrilique/TempoTest.git`
 
-You will need to have raylib and soundio libraries installed in your system.
-
-After that, go to the TempoTest directory and run:
+To build this, you will need to install the GTK4 development libraries. If they're not installed, the `cmake ..` command will fail with an error message. To install them, use one of the following commands:
+Ubuntu:
 ```
+sudo apt install libgtk-4-dev
+```
+Fedora:
+```
+sudo dnf install gtk4-devel
+```
+OpenSUSE:
+```
+sudo zypper install gtk4-devel
+```
+
+After that, go to the TempoTest directory, make a build directory, run cmake and then make:
+```
+mkdir builddir
+cmake ..
 make
-./tester
+./Tester audio_file.extension
 ```
-
-## Troubleshooting
-
-If you have problems building related to raugyi.h or gui_window_file_dialog.h files, it might be because the version of raylib that's installed in your system is different than mine. You might be able to look for those 2 files inside the raylib and raygui source directories of the version of raylib that you have installed.
+Supported extensions are .wav, .flac and .mp3.
