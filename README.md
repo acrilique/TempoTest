@@ -1,4 +1,4 @@
-# Tester for @michaelkrzyzaniak beat/tempo tracking library.
+# Cross-platform tester for @michaelkrzyzaniak beat/tempo tracking library.
 
 In order to obtain the best parameters for different kinds of music, understand how the algorithms work and change them to obtain better results, I decided to make this simple app.
 
