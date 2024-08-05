@@ -312,7 +312,7 @@ static gboolean update_ui(gpointer user_data) {
     return G_SOURCE_CONTINUE;
 }
 
-static void destroy(GtkWindow *self, gpointer user_data) {
+static void close_request(GtkWindow *self, gpointer user_data) {
     (void) self;
     AudioContext* context = (AudioContext*)user_data;
 
@@ -349,13 +349,13 @@ static void activate(GtkApplication* app, gpointer user_data) {
     window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "BTT Testing");
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);  // Set initial size, but allow resizing
-    g_signal_connect(window, "destroy", G_CALLBACK(destroy), context);
+    g_signal_connect(window, "close-request", G_CALLBACK(close_request), context);
 
     grid = gtk_grid_new();
     gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
     gtk_grid_set_row_homogeneous(GTK_GRID(grid), TRUE);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 20);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 30);
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 60);
     gtk_widget_set_hexpand(grid, TRUE);
     gtk_widget_set_vexpand(grid, TRUE);
     gtk_window_set_child(GTK_WINDOW(window), grid);
