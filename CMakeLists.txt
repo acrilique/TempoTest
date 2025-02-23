@@ -49,6 +49,6 @@ target_link_libraries(${PROJECT_NAME} PkgConfig::LIBGTK4 m)
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/style.css"
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>/style.css
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/style.css"
     COMMENT "Copying style.css to output directory"
 )
