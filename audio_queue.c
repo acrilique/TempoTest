@@ -58,3 +58,22 @@ AudioFrame dequeueAudioFrame(AudioQueue* queue) {
 
     return frame;
 }
+
+void clearAudioQueue(AudioQueue* queue) {
+    pthread_mutex_lock(&queue->mutex);
+    
+    // Free any allocated frame data between head and tail
+    int current = queue->head;
+    while (current != queue->tail) {
+        free(queue->frames[current].data);
+        queue->frames[current].data = NULL;
+        queue->frames[current].frameCount = 0;
+        current = (current + 1) % queue->capacity;
+    }
+    
+    // Reset queue state
+    queue->head = queue->tail = 0;
+    
+    pthread_cond_broadcast(&queue->cond);
+    pthread_mutex_unlock(&queue->mutex);
+}

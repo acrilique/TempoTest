@@ -16,5 +16,6 @@ void destroyCircularBuffer(CircularBuffer* cb);
 void writeToCircularBuffer(CircularBuffer* cb, float* data, int count);
 int readFromCircularBuffer(CircularBuffer* cb, float* data, int count);
 int getAvailableData(CircularBuffer* cb);
+void clearCircularBuffer(CircularBuffer* cb);
 
 #endif // CIRCULAR_BUFFER_H

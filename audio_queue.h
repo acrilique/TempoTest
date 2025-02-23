@@ -22,5 +22,6 @@ AudioQueue* createAudioQueue(int capacity);
 void destroyAudioQueue(AudioQueue* queue);
 void enqueueAudioFrame(AudioQueue* queue, float* data, size_t frameCount);
 AudioFrame dequeueAudioFrame(AudioQueue* queue);
+void clearAudioQueue(AudioQueue* queue);
 
 #endif // AUDIO_QUEUE_H

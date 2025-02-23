@@ -51,3 +51,11 @@ int getAvailableData(CircularBuffer* cb) {
     pthread_mutex_unlock(&cb->mutex);
     return available;
 }
+
+void clearCircularBuffer(CircularBuffer* cb) {
+    pthread_mutex_lock(&cb->mutex);
+    memset(cb->buffer, 0, cb->size * sizeof(float));
+    cb->head = 0;
+    cb->tail = 0;
+    pthread_mutex_unlock(&cb->mutex);
+}

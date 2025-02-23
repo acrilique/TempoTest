@@ -24,7 +24,10 @@ typedef struct _Parameter{
 } Parameter;
 
 typedef struct {
-    ma_decoder* decoder;
+    ma_decoder decoder;
+    ma_device device;
+    ma_decoder_config decoderConfig;
+    ma_device_config deviceConfig;
     CircularBuffer* waveform_buffer;
     AudioQueue* btt_queue;
     BTT* btt;
@@ -40,6 +43,7 @@ typedef struct {
     bool isPlaying;
     bool btt_thread_running;
     bool ui_running;
+    char* audioFilePath;
 } AudioContext;
 
 Parameter params[] = {
@@ -93,18 +97,17 @@ void parse_parameters(BTT* btt, int argc, char* argv[]) {
 
 void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
     AudioContext* context = (AudioContext*)pDevice->pUserData;
-    ma_decoder* pDecoder = context->decoder;
 
-    if (pDecoder == NULL || !context->isPlaying) {
+    if (!context->isPlaying) {
         return;
     }
 
     float* output = (float*)pOutput;
     ma_uint64 framesRead;
-    ma_decoder_read_pcm_frames(pDecoder, output, frameCount, &framesRead);
+    ma_decoder_read_pcm_frames(&context->decoder, output, frameCount, &framesRead);
 
     for (int i = 0; i < (int) framesRead; i++) {
-        writeToCircularBuffer(context->waveform_buffer, &output[i * pDecoder->outputChannels], 1);
+        writeToCircularBuffer(context->waveform_buffer, &output[i * context->decoder.outputChannels], 1);
     }
 
     enqueueAudioFrame(context->btt_queue, output, framesRead);
@@ -133,7 +136,9 @@ void* btt_processing_thread(void* arg) {
  */
 void use_amplitude_normalization_togglebutton_toggled(GtkToggleButton *self, gpointer user_data) {
     AudioContext* context = (AudioContext*)user_data;
-    btt_set_use_amplitude_normalization(context->btt, (int) gtk_toggle_button_get_active(self));
+    gboolean active = gtk_toggle_button_get_active(self);
+    btt_set_use_amplitude_normalization(context->btt, (int)active);
+    gtk_button_set_label(GTK_BUTTON(self), active ? "ON" : "OFF");
 }
 
 void spectral_compression_gamma_scale_value_changed(GtkScale *self, gpointer user_data) {
@@ -244,26 +249,49 @@ static void draw_waveform(GtkDrawingArea *area, cairo_t *cr, int width, int heig
     (void) area;
     AudioContext* context = (AudioContext*)user_data;
 
-    float data[CIRCULAR_BUFFER_SIZE];
-    int count = readFromCircularBuffer(context->waveform_buffer, data, CIRCULAR_BUFFER_SIZE);
-
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    cairo_paint(cr);
-
-    cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
-    cairo_set_line_width(cr, 1.0);
-
-    int step = count / width;
-    if (step < 1) step = 1;
-
-    cairo_move_to(cr, 0, (double) height / 2);
-
-    for (int i = 0; i < width; i++) {
-        int index = (i * step) % count;
-        float sample = data[index];
-        cairo_line_to(cr, i, (double) height / 2 - sample * (double) height / 2);
+    // Only draw waveform if we have an audio file loaded
+    if (!context->isPlaying) {
+        return;
     }
 
+    float data[CIRCULAR_BUFFER_SIZE];
+    int count = readFromCircularBuffer(context->waveform_buffer, data, CIRCULAR_BUFFER_SIZE);
+    
+    // Check if we have any data to draw
+    if (count <= 0) {
+        return;
+    }
+
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_set_line_width(cr, 1.0);
+
+    int samplesPerPixel = count / width;
+    if (samplesPerPixel < 1) samplesPerPixel = 1;
+
+    double centerY = height / 2.0;
+
+    // Draw all vertical lines in a single path
+    cairo_new_path(cr);
+    for (int x = 0; x < width; x++) {
+        int startIdx = x * samplesPerPixel;
+        int endIdx = startIdx + samplesPerPixel;
+        if (endIdx > count) endIdx = count;
+        
+        if (startIdx >= count) break;
+
+        // Find min and max values for this pixel column
+        float minVal = data[startIdx];
+        float maxVal = data[startIdx];
+
+        for (int i = startIdx + 1; i < endIdx; i++) {
+            float sample = data[i];
+            if (sample < minVal) minVal = sample;
+            if (sample > maxVal) maxVal = sample;
+        }
+
+        cairo_move_to(cr, x, centerY - minVal * centerY);
+        cairo_line_to(cr, x, centerY - maxVal * centerY);
+    }
     cairo_stroke(cr);
 }
 
@@ -312,8 +340,8 @@ static gboolean update_ui(gpointer user_data) {
     return G_SOURCE_CONTINUE;
 }
 
-static void close_request(GtkWindow *self, gpointer user_data) {
-    (void) self;
+static void app_shutdown(GtkApplication* app, gpointer user_data) {
+    (void) app;
     AudioContext* context = (AudioContext*)user_data;
 
     context->isPlaying = false;
@@ -322,14 +350,148 @@ static void close_request(GtkWindow *self, gpointer user_data) {
     enqueueAudioFrame(context->btt_queue, NULL, 0);
     pthread_join(context->btt_thread, NULL);
 
+    if (ma_device_is_started(&context->device)) {
+        ma_device_stop(&context->device);
+    }
+    ma_device_uninit(&context->device);
+    ma_decoder_uninit(&context->decoder);
+
     destroyCircularBuffer(context->waveform_buffer);
     destroyAudioQueue(context->btt_queue);
     btt_destroy(context->btt);
+    free(context->audioFilePath);
+}
+
+static bool init_miniaudio(AudioContext* context) {
+    if (!context->audioFilePath) {
+        return false;
+    }
+
+    ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 2, 44100);
+    ma_result result = ma_decoder_init_file(context->audioFilePath, &decoderConfig, &context->decoder);
+    if (result != MA_SUCCESS) {
+        printf("Could not load file: %s\n", context->audioFilePath);
+        return false;
+    }
+
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format = context->decoder.outputFormat;
+    deviceConfig.playback.channels = context->decoder.outputChannels;
+    deviceConfig.sampleRate = context->decoder.outputSampleRate;
+    deviceConfig.dataCallback = data_callback;
+    deviceConfig.pUserData = context;
+
+    if (ma_device_init(NULL, &deviceConfig, &context->device) != MA_SUCCESS) {
+        printf("Failed to open playback device.\n");
+        ma_decoder_uninit(&context->decoder);
+        return false;
+    }
+
+    if (ma_device_start(&context->device) != MA_SUCCESS) {
+        printf("Failed to start playback device.\n");
+        ma_device_uninit(&context->device);
+        ma_decoder_uninit(&context->decoder);
+        return false;
+    }
+
+    return true;
+}
+
+static void reinitialize_audio(AudioContext* context, const char* new_file_path) {
+    // Stop current playback and processing
+    context->isPlaying = false;
+    context->btt_thread_running = false;
+    
+    // Stop and clean up current audio
+    if (ma_device_is_started(&context->device)) {
+        ma_device_stop(&context->device);
+    }
+    ma_device_uninit(&context->device);
+    ma_decoder_uninit(&context->decoder);
+
+    // Update file path
+    free(context->audioFilePath);
+    context->audioFilePath = strdup(new_file_path);
+
+    // Reset buffers
+    clearCircularBuffer(context->waveform_buffer);
+    clearAudioQueue(context->btt_queue);
+
+    if (!init_miniaudio(context)) {
+        return;
+    }
+
+    // Restart processing
+    context->btt_thread_running = true;
+    context->isPlaying = true;
+}
+
+static void on_file_dialog_response(GObject* source_object, GAsyncResult* result, gpointer user_data) {
+    GtkFileDialog* file_dialog = GTK_FILE_DIALOG(source_object);
+    AudioContext* context = (AudioContext*)user_data;
+    GError* error = NULL;
+    
+    GFile* file = gtk_file_dialog_open_finish(file_dialog, result, &error);
+    if (file == NULL) {
+        if (error != NULL) {
+            g_warning("Error opening file: %s", error->message);
+            g_error_free(error);
+        }
+        return;
+    }
+
+    char* file_path = g_file_get_path(file);
+    g_object_unref(file);
+
+    if (file_path != NULL) {
+        reinitialize_audio(context, file_path);
+        g_free(file_path);
+    }
+}
+
+static void on_open_button_clicked(GtkButton* button, gpointer user_data) {
+    AudioContext* context = (AudioContext*)user_data;
+    GtkWindow* window = GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(button)));
+    
+    GtkFileDialog* file_dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(file_dialog, "Open Audio File");
+    
+    // Set up file filters
+    GListStore* filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+    
+    GtkFileFilter* audio_filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(audio_filter, "Audio Files");
+    gtk_file_filter_add_pattern(audio_filter, "*.wav");
+    gtk_file_filter_add_pattern(audio_filter, "*.mp3");
+    g_list_store_append(filters, audio_filter);
+    
+    GtkFileFilter* all_filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(all_filter, "All Files");
+    gtk_file_filter_add_pattern(all_filter, "*");
+    g_list_store_append(filters, all_filter);
+    
+    gtk_file_dialog_set_filters(file_dialog, G_LIST_MODEL(filters));
+    gtk_file_dialog_set_default_filter(file_dialog, audio_filter);
+    
+    g_object_unref(audio_filter);
+    g_object_unref(all_filter);
+    g_object_unref(filters);
+    
+    gtk_file_dialog_open(file_dialog, window, NULL, on_file_dialog_response, context);
+    g_object_unref(file_dialog);
 }
 
 static void activate(GtkApplication* app, gpointer user_data) {
     AudioContext* context = (AudioContext*)user_data;
-    GtkWidget *window, *grid, *tempo_label, *drawing_area;
+    GtkWidget *window, *grid, *tempo_label, *drawing_area, *header_bar;
+    
+    // Load CSS provider
+    GtkCssProvider *provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_path(provider, "style.css");
+    gtk_style_context_add_provider_for_display(gdk_display_get_default(),
+                                             GTK_STYLE_PROVIDER(provider),
+                                             GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
     GtkWidget *use_amplitude_normalization_togglebutton, *spectral_compression_gamma_scale,
             *oss_filter_cutoff_scale, *onset_threshold_scale, *onset_threshold_min_scale,
             *noise_cancellation_threshold_scale, *autocorrelation_exponent_scale,
@@ -344,12 +506,23 @@ static void activate(GtkApplication* app, gpointer user_data) {
             *gaussian_tempo_histogram_decay_box, *gaussian_tempo_histogram_width_box,
             *log_gaussian_tempo_weight_mean_box, *log_gaussian_tempo_weight_width_box;
 
+    // Only initialize miniaudio if we have an audio file
+    if (context->audioFilePath && !init_miniaudio(context)) {
+        return;
+    }
+
     context->ui_running = TRUE;
 
     window = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(window), "BTT Testing");
-    gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);  // Set initial size, but allow resizing
-    g_signal_connect(window, "close-request", G_CALLBACK(close_request), context);
+    gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);
+
+    header_bar = gtk_header_bar_new();
+    gtk_window_set_titlebar(GTK_WINDOW(window), header_bar);
+    gtk_header_bar_set_show_title_buttons(GTK_HEADER_BAR(header_bar), TRUE);
+
+    GtkWidget* open_button = gtk_button_new_with_label("Open");
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header_bar), open_button);
+    g_signal_connect(open_button, "clicked", G_CALLBACK(on_open_button_clicked), context);
 
     grid = gtk_grid_new();
     gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
@@ -361,12 +534,14 @@ static void activate(GtkApplication* app, gpointer user_data) {
     gtk_window_set_child(GTK_WINDOW(window), grid);
 
     tempo_label = gtk_label_new("Tempo: 0 BPM");
+    gtk_widget_add_css_class(tempo_label, "tempo-display");
     gtk_grid_attach(GTK_GRID(grid), tempo_label, 0, 0, 10, 1);
 
     drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(drawing_area, 800, 200);
     gtk_widget_set_hexpand(drawing_area, TRUE);
     gtk_widget_set_vexpand(drawing_area, TRUE);
+    gtk_widget_add_css_class(drawing_area, "drawing-area");
     gtk_grid_attach(GTK_GRID(grid), drawing_area, 0, 1, 10, 2);
 
     gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawing_area),
@@ -376,10 +551,18 @@ static void activate(GtkApplication* app, gpointer user_data) {
     /**
         * PARAMETER CONTROLS, the 6 on the left are for onset detection, while the 8 on the right are for tempo detection.
     */
-    use_amplitude_normalization_togglebutton = gtk_toggle_button_new_with_label("Use Amplitude Normalization");
-    gtk_grid_attach(GTK_GRID(grid), use_amplitude_normalization_togglebutton, 0, 4, 2, 1);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(use_amplitude_normalization_togglebutton), (gboolean) btt_get_use_amplitude_normalization(context->btt));
+    // Create amplitude normalization box and controls
+    GtkWidget* amplitude_normalization_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    GtkWidget* amplitude_normalization_label = gtk_label_new("Amplitude Normalization");
+    gboolean initial_state = (gboolean)btt_get_use_amplitude_normalization(context->btt);
+    use_amplitude_normalization_togglebutton = gtk_toggle_button_new_with_label(initial_state ? "ON" : "OFF");
+    gtk_widget_add_css_class(use_amplitude_normalization_togglebutton, "checkbutton");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(use_amplitude_normalization_togglebutton), initial_state);
     g_signal_connect(use_amplitude_normalization_togglebutton, "toggled", G_CALLBACK(use_amplitude_normalization_togglebutton_toggled), context);
+    
+    gtk_box_append(GTK_BOX(amplitude_normalization_box), amplitude_normalization_label);
+    gtk_box_append(GTK_BOX(amplitude_normalization_box), use_amplitude_normalization_togglebutton);
+    gtk_grid_attach(GTK_GRID(grid), amplitude_normalization_box, 0, 3, 2, 2);
 
     double spectral_compression_gamma = btt_get_spectral_compression_gamma(context->btt);
     const char *spectral_compression_gamma_text = g_strdup_printf("Spectral Compression Gamma: %.2f", spectral_compression_gamma);
@@ -558,38 +741,18 @@ static void activate(GtkApplication* app, gpointer user_data) {
 }
 
 int main(int argc, char** argv) {
-    ma_result result;
-    ma_decoder decoder;
-    ma_device_config deviceConfig;
-    ma_device device;
-    ma_decoder_config decoderConfig;
-
-    AudioContext context;
-
-    if (argc < 2) {
-        printf("Usage: %s <audio_file> [-i parameter=initial_value]\n", argv[0]);
-        return -1;
+    AudioContext context = {0};
+    
+    // If audio file provided as argument, use it
+    if (argc >= 2) {
+        context.audioFilePath = strdup(argv[1]);
+    } else {
+        // Start with no file, user will select via dialog
+        context.audioFilePath = NULL;
     }
-
-    decoderConfig = ma_decoder_config_init(ma_format_f32, 2, 44100);
-
-    result = ma_decoder_init_file(argv[1], &decoderConfig, &decoder);
-    if (result != MA_SUCCESS) {
-        printf("Could not load file: %s\n", argv[1]);
-        return -2;
-    }
-
-    context.decoder = &decoder;
     context.waveform_buffer = createCircularBuffer(CIRCULAR_BUFFER_SIZE);
-    context.isPlaying = true;
+    context.isPlaying = context.audioFilePath != NULL;  // Only start playing if file provided
     context.currentTempo = 0;
-
-    deviceConfig = ma_device_config_init(ma_device_type_playback);
-    deviceConfig.playback.format = decoder.outputFormat;
-    deviceConfig.playback.channels = decoder.outputChannels;
-    deviceConfig.sampleRate = decoder.outputSampleRate;
-    deviceConfig.dataCallback = data_callback;
-    deviceConfig.pUserData = &context;
 
     context.btt = btt_new_default();
     btt_set_tracking_mode(context.btt, BTT_ONSET_AND_TEMPO_TRACKING);
@@ -600,23 +763,10 @@ int main(int argc, char** argv) {
 
     if (pthread_create(&context.btt_thread, NULL, btt_processing_thread, &context) != 0) {
         printf("Failed to create BTT processing thread.\n");
-        ma_decoder_uninit(&decoder);
         destroyCircularBuffer(context.waveform_buffer);
         destroyAudioQueue(context.btt_queue);
+        free(context.audioFilePath);
         return -3;
-    }
-
-    if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
-        printf("Failed to open playback device.\n");
-        ma_decoder_uninit(&decoder);
-        return -3;
-    }
-
-    if (ma_device_start(&device) != MA_SUCCESS) {
-        printf("Failed to start playback device.\n");
-        ma_device_uninit(&device);
-        ma_decoder_uninit(&decoder);
-        return -4;
     }
 
     GtkApplication *app;
@@ -624,11 +774,8 @@ int main(int argc, char** argv) {
 
     app = gtk_application_new("com.acrilique.TestBTT", G_APPLICATION_NON_UNIQUE);
     g_signal_connect(app, "activate", G_CALLBACK(activate), &context);
+    g_signal_connect(app, "shutdown", G_CALLBACK(app_shutdown), &context);
     status = g_application_run(G_APPLICATION(app), 1, argv);
-
-    if (ma_device_is_started(&device)) ma_device_stop(&device);
-    ma_device_uninit(&device);
-    ma_decoder_uninit(&decoder);
 
     g_object_unref(app);
 

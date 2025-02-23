@@ -1,0 +1,126 @@
+/* Base window styling */
+window {
+    background-color:rgb(63, 57, 57);
+    color: #ffffff;
+}
+
+headerbar {
+    background-color: #1d1d1d;
+    border-bottom: 1px solid #3d3d3d;
+    padding: 8px;
+}
+
+button {
+    background-color: #404040;
+    color: #ffffff;
+    padding: 8px 16px;
+    transition: background-color 200ms ease;
+}
+
+button:hover {
+    background-color: #505050;
+}
+
+button:active {
+    background-color: #606060;
+}
+
+/* Labels */
+label {
+    font-size: 22px;
+    color: #e0e0e0;
+    margin: 4px 0;
+}
+
+/* Scales (sliders) */
+scale {
+    min-height: 24px;
+    min-width: 100px;
+    margin: 4px 0;
+}
+
+scale trough {
+    background-color: #404040;
+    border-radius: 4px;
+    min-height: 6px;
+}
+
+scale highlight {
+    background-color: #2196F3;
+    border-radius: 4px;
+}
+
+scale slider {
+    background-color: #ffffff;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+    margin: -6px;
+}
+
+scale slider:hover {
+    background-color: #e0e0e0;
+}
+
+/* Toggle button */
+checkbutton {
+    margin: 4px 0;
+}
+
+checkbutton check {
+    background-color: #404040;
+    border-radius: 4px;
+    min-width: 16px;
+    min-height: 16px;
+}
+
+checkbutton:checked check {
+    background-color: #2196F3;
+}
+
+/* Spin button */
+spinbutton {
+    background-color: #404040;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+spinbutton entry {
+    min-height: 24px;
+    min-width: 60px;
+}
+
+spinbutton button {
+    background-color: #505050;
+    padding: 4px;
+}
+
+spinbutton button:hover {
+    background-color: #606060;
+}
+
+/* Drawing area (waveform) */
+drawing-area {
+    background-color:rgb(199, 82, 82);
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+/* Grid layout */
+grid {
+    padding: 64px;   
+}
+
+box {
+    padding: 4px;
+}
+
+/* Tempo label (main display) */
+.tempo-display {
+    font-size: 32px;
+    font-weight: bold;
+    color: #2196F3;
+    margin: 16px 0;
+}
