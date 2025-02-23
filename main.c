@@ -12,7 +12,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "lib/miniaudio.h"
 
-#define CIRCULAR_BUFFER_SIZE (44100 * 2)
+#define CIRCULAR_BUFFER_SIZE (44100 * 4)
 
 typedef struct _Parameter{
     const char* name;
