@@ -1,0 +1,9 @@
+[
+    {
+        "name": "Cross-compile for Windows",
+        "compilers": {
+            "C": "x86_64-w64-mingw32-gcc"
+        },
+        "toolchainFile": "${workspaceFolder}/mingw-w64-x86_64.cmake"
+    }
+]
