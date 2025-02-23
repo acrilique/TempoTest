@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(Tester C)
 
-set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD 99)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
@@ -38,9 +38,6 @@ set(SOURCES
 # Add the source files to the executable
 target_sources(${PROJECT_NAME} PRIVATE ${SOURCES})
 
-# Check if GTK4 is already available on the system
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBGTK4 REQUIRED IMPORTED_TARGET gtk4)
-
-target_link_libraries(${PROJECT_NAME} PkgConfig::LIBGTK4)
-target_link_libraries(${PROJECT_NAME} m)
+target_link_libraries(${PROJECT_NAME} PkgConfig::LIBGTK4 m)
