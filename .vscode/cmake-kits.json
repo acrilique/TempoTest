@@ -4,6 +4,9 @@
         "compilers": {
             "C": "x86_64-w64-mingw32-gcc"
         },
-        "toolchainFile": "${workspaceFolder}/mingw-w64-x86_64.cmake"
+        "toolchainFile": "${workspaceFolder}/mingw-w64-x86_64.cmake",
+        "environmentVariables": {
+            "PKG_CONFIG_LIBDIR": "/usr/x86_64-w64-mingw32/sys-root/mingw/lib/pkgconfig"
+        }
     }
 ]
