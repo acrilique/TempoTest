@@ -33,7 +33,8 @@ mkdir builddir
 cd builddir
 cmake ..
 cmake --build
-./Tester audio_file.extension
+cd Debug
+./Tester
 ```
 
 ## Native Windows build
@@ -51,7 +52,8 @@ mkdir builddir
 cd builddir
 cmake ..
 cmake --build
-./Tester audio_file.extension
+cd Debug
+./Tester
 ```
 
 ## Cross-compile from Linux for Windows
