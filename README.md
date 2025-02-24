@@ -6,25 +6,30 @@ In order to obtain the best parameters for different kinds of music, understand 
 
 If you're looking to give it a quick test, you can download one of the packages in the [releases page](https://github.com/acrilique/TempoTest/releases). Else you'll probably want to build it yourself. 
 
-## Native Linux build
+## Native Unix build
 
 First clone this repository (option --recurse-submodules is needed to get the `Beat-and-Tempo-Tracking` dependency too):
 
 `git clone --recurse-submodules https://github.com/acrilique/TempoTest.git`
 
-To build this, you will need to install pkg-config and the GTK4 development libraries. If they're not installed, the `cmake ..` command will fail with an error message. If you're on Linux, use one of the following commands to install them:
+To build this, you will need to install cmake, pkg-config and the GTK4 development libraries. If they're not installed, the `cmake ..` command will fail with an error message. If you're on Linux, use one of the following commands to install them:
 
 Ubuntu:
 ```bash
-sudo apt install pkg-config libgtk-4-dev
+sudo apt install cmake pkg-config libgtk-4-dev
 ```
 Fedora:
 ```bash
-sudo dnf install pkg-config gtk4-devel
+sudo dnf install cmake pkg-config gtk4-devel
 ```
 OpenSUSE:
 ```bash
-sudo zypper install pkg-config gtk4-devel
+sudo zypper install cmake pkg-config gtk4-devel
+```
+
+Also for MacOS, this should work too (although it hasn't been tested yet):
+```sh
+brew install cmake pkg-config gtk4
 ```
 
 After that, go to the TempoTest directory, make a build directory, run cmake and then build:
