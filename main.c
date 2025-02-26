@@ -481,9 +481,109 @@ static void on_open_button_clicked(GtkButton* button, gpointer user_data) {
     g_object_unref(file_dialog);
 }
 
+/* UI size levels */
+typedef enum {
+    UI_SIZE_XS = 0,
+    UI_SIZE_S,
+    UI_SIZE_M,
+    UI_SIZE_L,
+    UI_SIZE_XL,
+    UI_SIZE_COUNT
+} UISize;
+
+static const char* UI_SIZE_CLASS_NAMES[] = {
+    "ui-size-xs",
+    "ui-size-s",
+    "ui-size-m",
+    "ui-size-l",
+    "ui-size-xl"
+};
+
+/* Function to change UI size */
+static void change_ui_size(GtkWidget *grid, UISize new_size) {
+    // Remove all size classes first
+    for (int i = 0; i < UI_SIZE_COUNT; i++) {
+        gtk_widget_remove_css_class(grid, UI_SIZE_CLASS_NAMES[i]);
+    }
+    
+    // Add the new size class
+    gtk_widget_add_css_class(grid, UI_SIZE_CLASS_NAMES[new_size]);
+}
+
+/* Size button click handlers */
+static void on_size_decrease_clicked(GtkButton *button, gpointer user_data) {
+    (void)button; // Mark parameter as intentionally unused
+    GtkWidget *grid = GTK_WIDGET(user_data);
+    
+    if (grid == NULL) {
+        g_warning("Grid is NULL in on_size_decrease_clicked");
+        return;
+    }
+    
+    // Find current size class
+    UISize current_size = UI_SIZE_M; // Default to medium if no class found
+    for (int i = 0; i < UI_SIZE_COUNT; i++) {
+        if (gtk_widget_has_css_class(grid, UI_SIZE_CLASS_NAMES[i])) {
+            current_size = i;
+            break;
+        }
+    }
+    
+    // Decrease size (but not below XS)
+    if (current_size > UI_SIZE_XS) {
+        change_ui_size(grid, current_size - 1);
+    }
+}
+
+static void on_size_increase_clicked(GtkButton *button, gpointer user_data) {
+    (void)button; // Mark parameter as intentionally unused
+    GtkWidget *grid = GTK_WIDGET(user_data);
+    
+    if (grid == NULL) {
+        g_warning("Grid is NULL in on_size_increase_clicked");
+        return;
+    }
+    
+    // Find current size class
+    UISize current_size = UI_SIZE_M; // Default to medium if no class found
+    for (int i = 0; i < UI_SIZE_COUNT; i++) {
+        if (gtk_widget_has_css_class(grid, UI_SIZE_CLASS_NAMES[i])) {
+            current_size = i;
+            break;
+        }
+    }
+    
+    // Increase size (but not above XL)
+    if (current_size < UI_SIZE_XL) {
+        change_ui_size(grid, current_size + 1);
+    }
+}
+
+/* Key press event handler for window */
+static gboolean on_key_press(GtkEventController *controller, guint keyval, guint keycode, 
+                            GdkModifierType state, gpointer user_data) {
+    GtkWidget *grid = GTK_WIDGET(user_data);
+    
+    // Check for Ctrl key being pressed
+    if (state & GDK_CONTROL_MASK) {
+        // Check for + key (plus or equal sign with shift)
+        if (keyval == GDK_KEY_plus || keyval == GDK_KEY_equal) {
+            on_size_increase_clicked(NULL, grid);
+            return TRUE;
+        }
+        // Check for - key
+        else if (keyval == GDK_KEY_minus) {
+            on_size_decrease_clicked(NULL, grid);
+            return TRUE;
+        }
+    }
+    
+    return FALSE; // Let other handlers process the event
+}
+
 static void activate(GtkApplication* app, gpointer user_data) {
     AudioContext* context = (AudioContext*)user_data;
-    GtkWidget *window, *grid, *tempo_label, *drawing_area, *header_bar;
+    GtkWidget *window, *grid, *tempo_label, *drawing_area, *header_bar, *scrolled_window;
     
     // Load CSS provider
     GtkCssProvider *provider = gtk_css_provider_new();
@@ -515,6 +615,7 @@ static void activate(GtkApplication* app, gpointer user_data) {
 
     window = gtk_application_window_new(app);
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);
+    gtk_window_set_resizable(GTK_WINDOW(window), TRUE);
 
     header_bar = gtk_header_bar_new();
     gtk_window_set_titlebar(GTK_WINDOW(window), header_bar);
@@ -523,24 +624,48 @@ static void activate(GtkApplication* app, gpointer user_data) {
     GtkWidget* open_button = gtk_button_new_with_label("Open");
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header_bar), open_button);
     g_signal_connect(open_button, "clicked", G_CALLBACK(on_open_button_clicked), context);
+    
+    // Create size buttons but don't connect signals yet (grid not created)
+    GtkWidget* size_decrease_button = gtk_button_new_with_label("-");
+    gtk_widget_add_css_class(size_decrease_button, "size-button");
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header_bar), size_decrease_button);
+    
+    GtkWidget* size_increase_button = gtk_button_new_with_label("+");
+    gtk_widget_add_css_class(size_increase_button, "size-button");
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header_bar), size_increase_button);
+
+    scrolled_window = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                  GTK_POLICY_AUTOMATIC,
+                                  GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_hexpand(scrolled_window, TRUE);
+    gtk_widget_set_vexpand(scrolled_window, TRUE);
+    gtk_window_set_child(GTK_WINDOW(window), scrolled_window);
 
     grid = gtk_grid_new();
     gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
-    gtk_grid_set_row_homogeneous(GTK_GRID(grid), TRUE);
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 20);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 60);
+    gtk_grid_set_row_homogeneous(GTK_GRID(grid), FALSE); // Allow rows to have different heights
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);     // Reduced spacing
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 20);        // Reduced spacing
     gtk_widget_set_hexpand(grid, TRUE);
     gtk_widget_set_vexpand(grid, TRUE);
-    gtk_window_set_child(GTK_WINDOW(window), grid);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), grid);
+    
+    // Set initial UI size to medium
+    change_ui_size(grid, UI_SIZE_M);
+    
+    // Now connect size button signals since grid is created
+    g_signal_connect(size_decrease_button, "clicked", G_CALLBACK(on_size_decrease_clicked), grid);
+    g_signal_connect(size_increase_button, "clicked", G_CALLBACK(on_size_increase_clicked), grid);
 
     tempo_label = gtk_label_new("Tempo: 0 BPM");
     gtk_widget_add_css_class(tempo_label, "tempo-display");
     gtk_grid_attach(GTK_GRID(grid), tempo_label, 0, 0, 10, 1);
 
     drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(drawing_area, 800, 200);
     gtk_widget_set_hexpand(drawing_area, TRUE);
     gtk_widget_set_vexpand(drawing_area, TRUE);
+    gtk_widget_set_size_request(drawing_area, 200, 100); // Minimum size instead of fixed size
     gtk_widget_add_css_class(drawing_area, "drawing-area");
     gtk_grid_attach(GTK_GRID(grid), drawing_area, 0, 1, 10, 2);
 
@@ -551,7 +676,6 @@ static void activate(GtkApplication* app, gpointer user_data) {
     /**
         * PARAMETER CONTROLS, the 6 on the left are for onset detection, while the 8 on the right are for tempo detection.
     */
-    // Create amplitude normalization box and controls
     GtkWidget* amplitude_normalization_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     GtkWidget* amplitude_normalization_label = gtk_label_new("Amplitude Normalization");
     gboolean initial_state = (gboolean)btt_get_use_amplitude_normalization(context->btt);
@@ -736,6 +860,10 @@ static void activate(GtkApplication* app, gpointer user_data) {
     g_object_weak_ref(G_OBJECT(context->tempo_label), on_widget_destroy, &context->tempo_label);
     g_object_weak_ref(G_OBJECT(context->drawing_area), on_widget_destroy, &context->drawing_area);
     g_timeout_add(25, update_ui, context);
+    
+    GtkEventController *key_controller = gtk_event_controller_key_new();
+    g_signal_connect(key_controller, "key-pressed", G_CALLBACK(on_key_press), grid);
+    gtk_widget_add_controller(window, key_controller);
 
     gtk_window_present(GTK_WINDOW(window));
 }
@@ -743,15 +871,13 @@ static void activate(GtkApplication* app, gpointer user_data) {
 int main(int argc, char** argv) {
     AudioContext context = {0};
     
-    // If audio file provided as argument, use it
     if (argc >= 2) {
         context.audioFilePath = strdup(argv[1]);
     } else {
-        // Start with no file, user will select via dialog
         context.audioFilePath = NULL;
     }
     context.waveform_buffer = createCircularBuffer(CIRCULAR_BUFFER_SIZE);
-    context.isPlaying = context.audioFilePath != NULL;  // Only start playing if file provided
+    context.isPlaying = context.audioFilePath != NULL;
     context.currentTempo = 0;
 
     context.btt = btt_new_default();
